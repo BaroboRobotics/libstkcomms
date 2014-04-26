@@ -4,6 +4,14 @@
 cmake_minimum_required(VERSION 2.8.9)
 project(LIBSTKCOMMS C CXX)
 
+set(TARGET stkcomms)
+if(TARGET ${TARGET})
+  # FIXME make sure that the current target's version or configuration matches?
+  # this feels rather dangerous. find_package would solve this conundrum :/
+  message(STATUS "libbarobo already configured")
+  return()
+endif()
+
 set(VERSION_MAJOR 0)
 set(VERSION_MINOR 0)
 set(VERSION_PATCH 0)
@@ -23,7 +31,6 @@ add_definitions(-DBUILD_CSTKCOMMS)
 ##############################################################################
 # Targets
 
-set(TARGET stkcomms)
 set(SOURCES src/libstkcomms.cpp src/libstkcomms++.cpp)
 
 add_library(${TARGET} ${SOURCES})
