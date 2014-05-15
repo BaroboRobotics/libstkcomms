@@ -67,15 +67,16 @@ if(WIN32)
   target_link_libraries(${TARGET} ws2_32)
   #set_target_properties(${TARGET} PROPERTIES COMPILE_FLAGS "/GS-")
 elseif(APPLE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -arch i386")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -arch i386")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ")
   set(CMAKE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib")
   target_link_libraries(${TARGET} pthread)
   set_target_properties(${TARGET} PROPERTIES
     INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
   install(TARGETS ${TARGET} 
-          ARCHIVE DESTINATION lib)
-  install(FILES libstkcomms.hpp DESTINATION include)
+          ARCHIVE DESTINATION lib
+          LIBRARY DESTINATION lib)
+  install(FILES include/libstkcomms.hpp DESTINATION include)
 else()
   #target_link_libraries(${TARGET} bluetooth pthread rt)
   install(TARGETS ${TARGET} 

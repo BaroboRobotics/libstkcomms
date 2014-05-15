@@ -38,6 +38,10 @@
 #include "libstkcomms.hpp"
 #include "command.h"
 #include "thread_macros.h"
+#ifdef __MACH__
+#include <sys/ioctl.h>
+#include <IOKit/serial/ioss.h>
+#endif
 
 //#ifdef DEBUG
 //#define THROW throw
@@ -295,84 +299,133 @@ int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address)
 #define MAX_PATH 1024
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 {
-  FILE *lockfile;
-  char *filename = strdup(ttyfilename);
-  char lockfileName[MAX_PATH];
-  int pid;
-  int status;
-  comms->socket = open(ttyfilename, O_RDWR | O_NOCTTY );
-  if(comms->socket < 0) {
-    perror("Unable to open tty port.");
+  /* We use non-blocking I/O here so we can support the POSIX implementation
+   * of dongleTimedReadRaw. dongleTimedReadRaw uses select, which can, per the
+   * man page, return false positives. A false positive would then cause the
+   * subsequent read call to block. XXX: no longer true ... experimenting */
+  comms->socket = open(ttyfilename, O_NONBLOCK | O_RDWR | O_NOCTTY);
+  if(-1 == comms->socket) {
+    char errbuf[256];
+    strerror_r(errno, errbuf, sizeof(errbuf));
+    fprintf(stderr, "ERROR: open(): %s\n", errbuf);
     return -1;
   }
-  comms->isConnected = 1;
-  /* Make the socket non-blocking */
-#ifndef _WIN32
-  unsigned int flags;
-  flags = fcntl(comms->socket, F_GETFL, 0);
-  fcntl(comms->socket, F_SETFL, flags | O_NONBLOCK);
+
+#ifdef __MACH__
+  sleep(1);
 #endif
-  /* Change the baud rate to 57600 */
+
   struct termios term;
-  tcgetattr(comms->socket, &term);
+  int status = tcgetattr(comms->socket, &term);
+  if (status) {
+    char errbuf[256];
+    strerror_r(errno, errbuf, sizeof(errbuf));
+    fprintf(stderr, "ERROR: tcgetattr(): %s\n", errbuf);
+    return -1;
+  }
+
+  /* The following code appears to be from:
+   * http://en.wikibooks.org/wiki/Serial_Programming/termios
+   * Refer there for appropriate comments--the gist is that we're setting up
+   * a serial link suitable for passing binary data, rather than a traditional
+   * ASCII terminal. The flag settings are very similar to cfmakeraw. */
 
   // Input flags - Turn off input processing
-  // convert break to null byte, no CR to NL translation,
-  // no NL to CR translation, don't mark parity errors or breaks
-  // no input parity check, don't strip high bit off,
-  // no XON/XOFF software flow control
-  //
   term.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
       INLCR | PARMRK | INPCK | ISTRIP | IXON);
-  //
+
   // Output flags - Turn off output processing
-  // no CR to NL translation, no NL to CR-NL translation,
-  // no NL to CR translation, no column 0 CR suppression,
-  // no Ctrl-D suppression, no fill characters, no case mapping,
-  // no local output processing
-  //
-  // term.c_oflag &= ~(OCRNL | ONLCR | ONLRET |
-  //                     ONOCR | ONOEOT| OFILL | OLCUC | OPOST);
   term.c_oflag = 0;
-  //
+
   // No line processing:
-  // echo off, echo newline off, canonical mode off, 
-  // extended input processing off, signal chars off
-  //
   term.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
-  //
+
   // Turn off character processing
-  // clear current char size mask, no parity checking,
-  // no output processing, force 8 bit input
-  //
   term.c_cflag &= ~(CSIZE | PARENB);
   term.c_cflag |= CS8;
-  //
-  // One input byte is enough to return from read()
-  // Inter-character timer off
-  //
+
+  // hlh: I tried turning the intercharacter timer back on (VMIN: 10,
+  // VTIME: 1), but the result was disastrously slow on OS X. I believe I
+  // tried this originally to eliminate timing issues in the detect framing
+  // routine.
   term.c_cc[VMIN]  = 1;
   term.c_cc[VTIME] = 0;
-  //
-  // Communication speed (simple version, using the predefined
-  // constants)
-  //
 
-  cfsetspeed(&term, B57600);
-  cfsetispeed(&term, B57600);
-  cfsetospeed(&term, B57600);
-  if(status = tcsetattr(comms->socket, TCSANOW, &term)) {
-    fprintf(stderr, "Error setting tty settings. %d\n", errno);
+  // Communication speed
+
+  /* If we got B0, then this OS may have a different way of setting the baud.
+   * Deal with it later. */
+  if (-1 == cfsetispeed(&term, B57600 )) {
+    char errbuf[256];
+    strerror_r(errno, errbuf, sizeof(errbuf));
+    fprintf(stderr, "ERROR: cfsetispeed(): %s\n", errbuf);
+    return -1;
   }
-  tcgetattr(comms->socket, &term);
-  if(cfgetispeed(&term) != B57600) {
-    fprintf(stderr, "Error setting input speed.\n");
-    exit(0);
+
+  if (-1 == cfsetospeed(&term, B57600)) {
+    char errbuf[256];
+    strerror_r(errno, errbuf, sizeof(errbuf));
+    fprintf(stderr, "ERROR: cfsetospeed(): %s\n", errbuf);
+    return -1;
   }
-  if(cfgetospeed(&term) != B57600) {
-    fprintf(stderr, "Error setting output speed.\n");
-    exit(0);
+
+  if (-1 == tcsetattr(comms->socket, TCSANOW, &term)) {
+    char errbuf[256];
+    strerror_r(errno, errbuf, sizeof(errbuf));
+    fprintf(stderr, "ERROR: Configuring %s: %s.\n", ttyfilename, errbuf);
+    return -1;
   }
+
+  if (1) {
+#ifdef __MACH__
+    unsigned long baud = 57600;
+    if (-1 == ioctl(comms->socket, IOSSIOSPEED, &baud)) {
+      char errbuf[256];
+      strerror_r(errno, errbuf, sizeof(errbuf));
+      fprintf(stderr, "ERROR: , "
+          "ioctl(..., IOSSIOSPEED, ...): %s\n", errbuf);
+      return -1;
+    }
+#else
+    fprintf(stderr, "ERROR: in dongleOpen, could not convert baud "
+        "%ld to POSIX speed\n", baud);
+    return -1;
+#endif
+  }
+  else {
+    /* If we used the POSIX method of setting the baud rate, we can check to
+     * make sure it got set. */
+    if (-1 == tcgetattr(comms->socket, &term)) {
+      char errbuf[256];
+      strerror_r(errno, errbuf, sizeof(errbuf));
+      fprintf(stderr, "(barobo) ERROR: in dongleOpen, tcgetattr(): %s\n", errbuf);
+      return -1;
+    }
+
+    if (cfgetispeed(&term) != B57600) {
+      fprintf(stderr, "(barobo) ERROR: Unable to set %s input speed.\n", ttyfilename);
+      return -1;
+    }
+
+    if (cfgetospeed(&term) != B57600) {
+      fprintf(stderr, "(barobo) ERROR: Unable to set %s output speed.\n", ttyfilename);
+      return -1;
+    }
+  }
+
+#ifdef __MACH__
+  write(comms->socket, NULL, 0);
+#endif
+  sleep(1);
+
+  if (-1 == tcflush(comms->socket, TCIOFLUSH)) {
+    char errbuf[256];
+    strerror_r(errno, errbuf, sizeof(errbuf));
+    fprintf(stderr, "(barobo) ERROR: in dongleOpen, tcflush(): %s\n", errbuf);
+    return -1;
+  }
+
+  comms->isConnected = 1;
   comms->connectionType = CONNECT_TTY;
   return 0;
 }
@@ -699,7 +752,8 @@ int stkComms_loadAddress(stkComms_t* comms, uint16_t address)
 int stkComms_progHexFile(stkComms_t* comms, const char* filename)
 {
   hexFile_t* file = hexFile_new();
-  hexFile_init2(file, filename);
+  int rc = hexFile_init2(file, filename);
+  if(rc) return rc;
   uint16_t pageSize;
   if(comms->formFactor == MOBOT_IL) {
     pageSize = 256;
@@ -901,6 +955,7 @@ int stkComms_universal(stkComms_t* comms, uint8_t byte1, uint8_t byte2, uint8_t 
 
 int stkComms_sendBytes(stkComms_t* comms, void* buf, size_t len)
 {
+  fprintf(stderr, "Yo!\n");
   if(!comms->isConnected) {
     return -1;
   }
@@ -1062,8 +1117,7 @@ int hexFile_init2(hexFile_t* hf, const char* filename)
   hf->data = NULL;
   hf->dataAllocSize = 0;
   hf->len = 0;
-  hexFile_loadFile(hf, filename);
-  return 0;
+  return hexFile_loadFile(hf, filename);
 }
 
 int hexFile_destroy(hexFile_t* hf)
