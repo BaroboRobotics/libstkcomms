@@ -955,7 +955,6 @@ int stkComms_universal(stkComms_t* comms, uint8_t byte1, uint8_t byte2, uint8_t 
 
 int stkComms_sendBytes(stkComms_t* comms, void* buf, size_t len)
 {
-  fprintf(stderr, "Yo!\n");
   if(!comms->isConnected) {
     return -1;
   }
