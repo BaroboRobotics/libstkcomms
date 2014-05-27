@@ -353,8 +353,6 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 
   // Communication speed
 
-  /* If we got B0, then this OS may have a different way of setting the baud.
-   * Deal with it later. */
   if (-1 == cfsetispeed(&term, B57600 )) {
     char errbuf[256];
     strerror_r(errno, errbuf, sizeof(errbuf));
@@ -376,6 +374,11 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
     return -1;
   }
 
+  /* hlh: For such a low speed (57.6k), we shouldn't have to do anything
+   * special to set it on Mac OS. The termios interface above should suffice.
+   * Thus the #if 0.
+   */
+#if 0
   if (1) {
 #ifdef __MACH__
     unsigned long baud = 57600;
@@ -393,6 +396,7 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 #endif
   }
   else {
+#endif
     /* If we used the POSIX method of setting the baud rate, we can check to
      * make sure it got set. */
     if (-1 == tcgetattr(comms->socket, &term)) {
@@ -411,7 +415,9 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
       fprintf(stderr, "(barobo) ERROR: Unable to set %s output speed.\n", ttyfilename);
       return -1;
     }
+#if 0
   }
+#endif
 
 #ifdef __MACH__
   write(comms->socket, NULL, 0);
