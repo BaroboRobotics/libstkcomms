@@ -4,11 +4,11 @@
 cmake_minimum_required(VERSION 2.8.9)
 project(LIBSTKCOMMS C CXX)
 
-set(TARGET stkcomms)
-if(TARGET ${TARGET})
+set(target stkcomms)
+if(TARGET ${target})
   # FIXME make sure that the current target's version or configuration matches?
   # this feels rather dangerous. find_package would solve this conundrum :/
-  message(STATUS "libbarobo already configured")
+  message(STATUS "libstkcomms already configured")
   return()
 endif()
 
@@ -17,25 +17,18 @@ set(VERSION_MINOR 0)
 set(VERSION_PATCH 0)
 set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
-##############################################################################
-# Headers
-
-set(PUBLIC_INCLUDE_DIR include)
-include_directories(${PUBLIC_INCLUDE_DIR})
-
-##############################################################################
-# Setup
-
-add_definitions(-DBUILD_CSTKCOMMS)
-
-##############################################################################
 # Targets
 
 set(SOURCES src/libstkcomms.cpp src/libstkcomms++.cpp)
 
-add_library(${TARGET} ${SOURCES})
+add_library(${target} ${SOURCES})
 
-##############################################################################
+set_target_properties(${target} PROPERTIES
+  VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
+  SOVERSION ${VERSION_MAJOR}
+  COMPILE_FLAGS "-DBUILD_CSTKCOMMS"
+)
+
 # Platform Specific Setup
 
 if(WIN32)
@@ -59,35 +52,50 @@ if(WIN32)
     message(FATAL_ERROR "Unable to find Windows SDK user mode headers under ${WINSDK_INSTALL_DIR}")
   endif()
 
-  add_definitions(-D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN)
 
-  set_target_properties(${TARGET} PROPERTIES COMPILE_FLAGS
-    "-idirafter \"${WINSDK_UM_INCLUDE_DIR}\"")
+  set_target_properties(${target} PROPERTIES
+    COMPILE_FLAGS "-idirafter \"${WINSDK_UM_INCLUDE_DIR}\" -D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN"
+  )
 
-  target_link_libraries(${TARGET} ws2_32)
-  #set_target_properties(${TARGET} PROPERTIES COMPILE_FLAGS "/GS-")
+
+  target_link_libraries(${target} ws2_32)
+  #set_target_properties(${target} PROPERTIES COMPILE_FLAGS "/GS-")
+  # FIXME: There's no install() call. Are we relying on fixup_bundle? Is
+  # that bad?
 elseif(APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ")
-  set(CMAKE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-  target_link_libraries(${TARGET} pthread)
-  set_target_properties(${TARGET} PROPERTIES
-    INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-  install(TARGETS ${TARGET} 
-          ARCHIVE DESTINATION lib
-          LIBRARY DESTINATION lib)
-  install(FILES include/libstkcomms.hpp DESTINATION include)
-else()
-  #target_link_libraries(${TARGET} bluetooth pthread rt)
-  install(TARGETS ${TARGET} 
-          LIBRARY DESTINATION lib
-          ARCHIVE DESTINATION lib)
-  install(FILES libstkcomms.h DESTINATION include)
+  target_link_libraries(${target} pthread)
+  set_target_properties(${target} PROPERTIES
+    INSTALL_NAME_DIR "@executable_path")
 endif()
 
-##############################################################################
+# Staging
+if(WIN32)
+  set(INSTALL_LIB_DIR .)
+  set(INSTALL_BIN_DIR .)
+  set(INSTALL_INCLUDE_DIR .)
+elseif(APPLE)
+  set(INSTALL_LIB_DIR Contents/MacOS)
+  set(INSTALL_BIN_DIR Contents/MacOS)
+  set(INSTALL_INCLUDE_DIR Contents/Headers)
+else()
+  set(INSTALL_LIB_DIR lib)
+  set(INSTALL_BIN_DIR bin)
+  set(INSTALL_INCLUDE_DIR include)
+endif()
+
+install(TARGETS ${target}
+  ARCHIVE DESTINATION ${INSTALL_LIB_DIR}
+  LIBRARY DESTINATION ${INSTALL_LIB_DIR}
+  RUNTIME DESTINATION ${INSTALL_BIN_DIR})
+install(FILES include/libstkcomms.h include/libstkcomms.hpp DESTINATION ${INSTALL_INCLUDE_DIR})
+
 # Configuration for dependent projects
 
+set(PUBLIC_INCLUDE_DIR include)
+include_directories(${PUBLIC_INCLUDE_DIR})
+
 get_filename_component(${PROJECT_NAME}_INCLUDE_DIRS ${PUBLIC_INCLUDE_DIR} ABSOLUTE CACHE)
-set(${PROJECT_NAME}_LIBRARIES ${TARGET} CACHE INTERNAL "")
+set(${PROJECT_NAME}_LIBRARIES ${target} CACHE INTERNAL "")
 set(${PROJECT_NAME}_VERSION ${VERSION} CACHE INTERNAL "")
