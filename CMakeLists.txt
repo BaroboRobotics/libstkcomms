@@ -26,8 +26,8 @@ add_library(${target} ${SOURCES})
 set_target_properties(${target} PROPERTIES
   VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
   SOVERSION ${VERSION_MAJOR}
-  COMPILE_FLAGS "-DBUILD_CSTKCOMMS"
 )
+target_compile_definitions(${target} PRIVATE BUILD_CSTKCOMMS)
 
 # Platform Specific Setup
 
