@@ -50,15 +50,20 @@ add_library(${target}
 set_target_properties(${target} PROPERTIES
   VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
   SOVERSION ${VERSION_MAJOR}
-  COMPILE_FLAGS "-DBUILD_CSTKCOMMS"
   MACOSX_RPATH ON
+)
+target_compile_definitions(${target}
+  PRIVATE "-DBUILD_CSTKCOMMS"
 )
 
 target_include_directories(${target} PUBLIC include)
 
 if(WIN32)
   set_target_properties(${target} PROPERTIES
-    COMPILE_FLAGS "-idirafter \"${WINSDK_UM_INCLUDE_DIR}\" -D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN"
+    COMPILE_FLAGS "-idirafter \"${WINSDK_UM_INCLUDE_DIR}\""
+  )
+  target_compile_definitions(${target}
+    PRIVATE "-D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN"
   )
   target_link_libraries(${target} ws2_32)
 else()
