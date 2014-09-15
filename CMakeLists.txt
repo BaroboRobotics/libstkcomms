@@ -2,14 +2,15 @@
 # Barobo, Inc.
 
 cmake_minimum_required(VERSION 2.8.9)
-project(LIBSTKCOMMS C CXX)
 
-set(TARGET stkcomms)
-if(TARGET ${TARGET})
+set(target stkcomms)
+
+project(${target})
+
+if(TARGET ${target})
   # FIXME make sure that the current target's version or configuration matches?
   # this feels rather dangerous. find_package would solve this conundrum :/
-  message(STATUS "libbarobo already configured")
-  return()
+  message(FATAL_ERROR "stkcomms already configured")
 endif()
 
 set(VERSION_MAJOR 0)
@@ -17,26 +18,7 @@ set(VERSION_MINOR 0)
 set(VERSION_PATCH 0)
 set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
-##############################################################################
-# Headers
-
-set(PUBLIC_INCLUDE_DIR include)
-include_directories(${PUBLIC_INCLUDE_DIR})
-
-##############################################################################
-# Setup
-
-add_definitions(-DBUILD_CSTKCOMMS)
-
-##############################################################################
-# Targets
-
-set(SOURCES src/libstkcomms.cpp src/libstkcomms++.cpp)
-
-add_library(${TARGET} ${SOURCES})
-
-##############################################################################
-# Platform Specific Setup
+# Prereqs
 
 if(WIN32)
   # FIXME find a place for findwindowssdk.cmake to live
@@ -58,36 +40,44 @@ if(WIN32)
   if(NOT WINSDK_UM_INCLUDE_DIR)
     message(FATAL_ERROR "Unable to find Windows SDK user mode headers under ${WINSDK_INSTALL_DIR}")
   endif()
-
-  add_definitions(-D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN)
-
-  set_target_properties(${TARGET} PROPERTIES COMPILE_FLAGS
-    "-idirafter \"${WINSDK_UM_INCLUDE_DIR}\"")
-
-  target_link_libraries(${TARGET} ws2_32)
-  #set_target_properties(${TARGET} PROPERTIES COMPILE_FLAGS "/GS-")
-elseif(APPLE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ")
-  set(CMAKE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-  target_link_libraries(${TARGET} pthread)
-  set_target_properties(${TARGET} PROPERTIES
-    INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-  install(TARGETS ${TARGET} 
-          ARCHIVE DESTINATION lib
-          LIBRARY DESTINATION lib)
-  install(FILES include/libstkcomms.hpp DESTINATION include)
-else()
-  #target_link_libraries(${TARGET} bluetooth pthread rt)
-  install(TARGETS ${TARGET} 
-          LIBRARY DESTINATION lib
-          ARCHIVE DESTINATION lib)
-  install(FILES libstkcomms.h DESTINATION include)
 endif()
 
-##############################################################################
-# Configuration for dependent projects
+# Targets and properties
 
-get_filename_component(${PROJECT_NAME}_INCLUDE_DIRS ${PUBLIC_INCLUDE_DIR} ABSOLUTE CACHE)
-set(${PROJECT_NAME}_LIBRARIES ${TARGET} CACHE INTERNAL "")
-set(${PROJECT_NAME}_VERSION ${VERSION} CACHE INTERNAL "")
+add_library(${target}
+  src/libstkcomms.cpp src/libstkcomms++.cpp)
+
+set_target_properties(${target} PROPERTIES
+  VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
+  SOVERSION ${VERSION_MAJOR}
+  MACOSX_RPATH ON
+)
+target_compile_definitions(${target}
+  PRIVATE "-DBUILD_CSTKCOMMS"
+)
+
+target_include_directories(${target} PUBLIC include)
+
+if(WIN32)
+  set_target_properties(${target} PROPERTIES
+    COMPILE_FLAGS "-idirafter \"${WINSDK_UM_INCLUDE_DIR}\""
+  )
+  target_compile_definitions(${target}
+    PRIVATE "-D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN"
+  )
+  target_link_libraries(${target} ws2_32)
+else()
+  target_link_libraries(${target} pthread)
+endif()
+
+# Staging
+
+if(WIN32)
+  set(dest .)
+elseif(APPLE)
+  set(dest ../MacOS)
+else()
+  set(dest lib)
+endif()
+
+install(TARGETS ${target} DESTINATION ${dest})
