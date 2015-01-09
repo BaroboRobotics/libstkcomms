@@ -111,7 +111,7 @@ extern "C" {
 stkComms_t* stkComms_new();
 int stkComms_init(stkComms_t* comms);
 int stkComms_destroy(stkComms_t* comms);
-int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address);
+//int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address);
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename);
 int stkComms_disconnect(stkComms_t* comms);
 int stkComms_setSocket(stkComms_t* comms, int socket);

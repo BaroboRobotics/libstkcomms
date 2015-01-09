@@ -53,10 +53,12 @@ CStkComms::~CStkComms()
   stkComms_destroy(_comms);
 }
 
+#if 0
 int CStkComms::connect(const char addr[])
 {
   return stkComms_connectWithAddressTTY(_comms, addr);
 }
+#endif
 
 int CStkComms::connectWithTTY(const char* ttyfilename)
 {
