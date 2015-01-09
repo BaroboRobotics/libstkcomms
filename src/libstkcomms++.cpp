@@ -55,7 +55,11 @@ CStkComms::~CStkComms()
 
 int CStkComms::connect(const char addr[])
 {
+#ifdef _WIN32
+  return stkComms_connectWithTTY(_comms, addr);
+#else
   return stkComms_connectWithAddressTTY(_comms, addr);
+#endif
 }
 
 int CStkComms::connectWithTTY(const char* ttyfilename)
