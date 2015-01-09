@@ -15,7 +15,6 @@
    along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define ENABLE_BLUETOOTH
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -29,11 +28,6 @@
 #include <termios.h>
 #else
 #include <winsock2.h>
-#ifdef ENABLE_BLUETOOTH
-#pragma comment(lib, "ws2_32.lib")
-#include <basetyps.h>
-#include <ws2bth.h>
-#endif
 #endif
 #include "libstkcomms.hpp"
 #include "command.h"
@@ -49,41 +43,6 @@
 #define THROW 
 //#endif
 //#define VERBOSE
-
-#if _WIN32 && defined(ENABLE_BLUETOOTH)
-typedef struct bdaddr_s {
-  UINT8 b[6];
-} bdaddr_t;
-
-static void baswap(bdaddr_t *dst, const bdaddr_t *src)
-{
-	register unsigned char *d = (unsigned char *) dst;
-	register const unsigned char *s = (const unsigned char *) src;
-	register int i;
-
-	for (i = 0; i < 6; i++)
-		d[i] = s[5-i];
-}
-
-static int str2ba(const char *str, bdaddr_t *ba)
-{
-	UINT8 b[6];
-	const char *ptr = str;
-	int i;
-
-	for (i = 0; i < 6; i++) {
-		b[i] = (UINT8) strtol(ptr, NULL, 16);
-		if (i != 5 && !(ptr = strchr(ptr, ':')))
-			ptr = ":00:00:00:00:00";
-		ptr++;
-	}
-
-	baswap(ba, (bdaddr_t *) b);
-
-	return 0;
-}
-#endif
-
 
 stkComms_t* stkComms_new()
 {
@@ -117,119 +76,6 @@ int stkComms_destroy(stkComms_t* comms)
   free(comms->progressLock);
   free(comms->progressCond);
   return 0;
-}
-
-int stkComms_connect(stkComms_t* comms, const char addr[])
-{
-#ifdef ENABLE_BLUETOOTH
-#ifndef __MACH__
-  int err = 0;
-  int flags;
-#ifndef _WIN32
-  comms->socket = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM);
-#else
-  comms->socket = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
-#endif
-
-#ifdef _WIN32
-  if(comms->socket == INVALID_SOCKET) {
-    err = WSAGetLastError();
-    printf("Could not bind to socket. Error %d\n", err);
-    if(err == 10047) {
-      return -5;
-    } else {
-      return -1;
-    }
-  }
-#else
-  if(comms->socket == -1) {
-    fprintf(stderr, "Could not bind to socket. %d\n", errno);
-    return -1;
-  }
-#endif
-  // set the connection parameters (who to connect to)
-#ifndef _WIN32
-  comms->addr.rc_family = AF_BLUETOOTH;
-  comms->addr.rc_channel = (uint8_t) 1;
-  str2ba( addr, &comms->addr.rc_bdaddr );
-#else
-  comms->addr.addressFamily = AF_BTH;
-  str2ba( addr, (bdaddr_t*)&comms->addr.btAddr);
-  comms->addr.port = 1;
-#endif
-
-  // connect to server
-  int status;
-  status = -1;
-  int tries = 0;
-  while(status < 0) {
-    if(tries > 2) {
-      break;
-    }
-    status = ::connect(comms->socket, (const struct sockaddr *)&comms->addr, sizeof(comms->addr));
-    if(status == 0) {
-      comms->isConnected = 1;
-    } 
-    tries++;
-  }
-  if(status < 0) {
-#ifndef _WIN32
-    perror("Error connecting.");
-#else
-	  LPVOID lpMsgBuf;
-	  FormatMessage( 
-		  FORMAT_MESSAGE_ALLOCATE_BUFFER | 
-		  FORMAT_MESSAGE_FROM_SYSTEM | 
-		  FORMAT_MESSAGE_IGNORE_INSERTS,
-		  NULL,
-		  GetLastError(),
-		  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
-		  (LPTSTR) &lpMsgBuf,
-		  0,
-		  NULL 
-		  );
-	  // Process any inserts in lpMsgBuf.
-	  // ...
-	  // Display the string.
-	  //MessageBox( NULL, (LPCTSTR)lpMsgBuf, "Error", MB_OK | MB_ICONINFORMATION );
-	  fprintf(stderr, "Error Connecting: %s", lpMsgBuf);
-    int wsaerror = WSAGetLastError();
-	  if(wsaerror == 10048) {
-		  fprintf(stderr, "Make sure there are no other programs currently connected to the Mobot.\n");
-      err = -4;
-	  } else if (wsaerror == 10047 || wsaerror == 10050) {
-      fprintf(stderr, "A bluetooth device could not be found on this computer. You may need to attach\nan external Bluetooth dongle to continue.\n");
-      err = -5;
-    } else {
-      err = -1;
-    }
-	  // Free the buffer.
-	  LocalFree( lpMsgBuf );
-#endif
-    return err;
-  }
-  /* Make the socket non-blocking */
-#ifndef _WIN32
-  flags = fcntl(comms->socket, F_GETFL, 0);
-  fcntl(comms->socket, F_SETFL, flags | O_NONBLOCK);
-  stkComms_setdtr(comms, 1);
-  sleep(1);
-  stkComms_setdtr(comms, 0);
-#else
-  u_long val = 1;
-  err = ioctlsocket(comms->socket, FIONBIO, &val);
-  if(err) {
-    printf("ioctlsocket failed %d\n", WSAGetLastError());
-  }
-#endif
-  comms->connectionType = CONNECT_SOCKET;
-  return 0;
-#else 
-  return -1;
-#endif
-#else // ENABLE_BLUETOOTH not defined
-  return -1;
-#endif // ENABLE_BLUETOOTH
 }
 
 #if defined (_WIN32) or defined (_MSYS)
