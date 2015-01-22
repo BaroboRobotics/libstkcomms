@@ -68,6 +68,10 @@ if(WIN32)
   target_link_libraries(${target} ws2_32)
 else()
   target_link_libraries(${target} pthread)
+  if(NOT APPLE)
+    # The BlueZ header requires GNU extensions.
+    target_compile_options(${target} INTERFACE "-std=gnu++11")
+  endif()
 endif()
 
 # Staging
