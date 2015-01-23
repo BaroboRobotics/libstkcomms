@@ -21,8 +21,7 @@ set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 # Prereqs
 
 if(WIN32)
-  # FIXME find a place for findwindowssdk.cmake to live
-  include("../libbarobo/findwindowssdk.cmake")
+  include(findwindowssdk.cmake)
   if(NOT WINSDK_VERSION)
     message(FATAL_ERROR "libstkcomms requires the Windows SDK")
   endif()
