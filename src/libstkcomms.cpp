@@ -631,7 +631,7 @@ int stkComms_progHexFile(stkComms_t* comms, const char* filename)
     stkComms_progPage(comms, buf, i);
     address += pageSize/2;
     /* Update the progress tracker */
-    stkComms_setProgress(comms, 0.5 * ((double)address*2) / (double)hexFile_len(file));
+    stkComms_setProgress(comms, /*0.5 **/ ((double)address*2) / (double)hexFile_len(file));
   }
   hexFile_destroy(file);
   free(file);

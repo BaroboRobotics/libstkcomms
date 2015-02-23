@@ -139,6 +139,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     stkComms_setProgramComplete(_comms, 0);
     return -1;
   }
+#if 0
   if(checkFlash(hexFileName)) {
     THROW;
     if (hwRev) {
@@ -147,6 +148,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     stkComms_setProgramComplete(_comms, 0);
     return -1;
   }
+#endif
   if(leaveProgMode()) {
     THROW;
     if (hwRev) {
