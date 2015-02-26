@@ -25,8 +25,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #ifndef __MACH__
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/rfcomm.h>
+//#include <bluetooth/bluetooth.h>
+//#include <bluetooth/rfcomm.h>
 #endif
 #else
 #include <winsock2.h>
@@ -86,7 +86,7 @@ typedef struct stkComms_s
 #elif defined __MACH__
   void* addr;
 #else
-  struct sockaddr_rc addr;
+  //struct sockaddr_rc addr;
 #endif
 #endif
 } stkComms_t;

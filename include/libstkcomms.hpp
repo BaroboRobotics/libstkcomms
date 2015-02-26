@@ -5,8 +5,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #ifndef __MACH__
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/rfcomm.h>
+//#include <bluetooth/bluetooth.h>
+//#include <bluetooth/rfcomm.h>
 #endif
 #else
 #include <winsock2.h>
