@@ -25,8 +25,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #ifndef __MACH__
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/rfcomm.h>
+//#include <bluetooth/bluetooth.h>
+//#include <bluetooth/rfcomm.h>
 #endif
 #else
 #include <winsock2.h>
@@ -86,7 +86,7 @@ typedef struct stkComms_s
 #elif defined __MACH__
   void* addr;
 #else
-  struct sockaddr_rc addr;
+  //struct sockaddr_rc addr;
 #endif
 #endif
 } stkComms_t;
@@ -111,7 +111,7 @@ extern "C" {
 stkComms_t* stkComms_new();
 int stkComms_init(stkComms_t* comms);
 int stkComms_destroy(stkComms_t* comms);
-int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address);
+//int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address);
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename);
 int stkComms_disconnect(stkComms_t* comms);
 int stkComms_setSocket(stkComms_t* comms, int socket);

@@ -53,6 +53,7 @@ CStkComms::~CStkComms()
   stkComms_destroy(_comms);
 }
 
+#if 0
 int CStkComms::connect(const char addr[])
 {
 #ifdef _WIN32
@@ -61,6 +62,7 @@ int CStkComms::connect(const char addr[])
   return stkComms_connectWithAddressTTY(_comms, addr);
 #endif
 }
+#endif
 
 int CStkComms::connectWithTTY(const char* ttyfilename)
 {
@@ -141,6 +143,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     stkComms_setProgramComplete(_comms, 0);
     return -1;
   }
+#if 0
   if(checkFlash(hexFileName)) {
     THROW;
     if (hwRev) {
@@ -149,6 +152,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     stkComms_setProgramComplete(_comms, 0);
     return -1;
   }
+#endif
   if(leaveProgMode()) {
     THROW;
     if (hwRev) {

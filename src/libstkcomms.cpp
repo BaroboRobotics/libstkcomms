@@ -128,6 +128,7 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
   return 0;
 }
 #else
+#if 0
 int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address)
 {
   char buf[80];
@@ -141,6 +142,7 @@ int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address)
   sprintf(buf, "/dev/tty.MOBOT-%s%s-SPP", chunk1, chunk2);
   return stkComms_connectWithTTY(comms, buf);
 }
+#endif
 
 #define MAX_PATH 1024
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
@@ -629,7 +631,7 @@ int stkComms_progHexFile(stkComms_t* comms, const char* filename)
     stkComms_progPage(comms, buf, i);
     address += pageSize/2;
     /* Update the progress tracker */
-    stkComms_setProgress(comms, 0.5 * ((double)address*2) / (double)hexFile_len(file));
+    stkComms_setProgress(comms, /*0.5 **/ ((double)address*2) / (double)hexFile_len(file));
   }
   hexFile_destroy(file);
   free(file);

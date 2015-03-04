@@ -21,8 +21,7 @@ set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 # Prereqs
 
 if(WIN32)
-  # FIXME find a place for findwindowssdk.cmake to live
-  include("../libbarobo/findwindowssdk.cmake")
+  include(findwindowssdk.cmake)
   if(NOT WINSDK_VERSION)
     message(FATAL_ERROR "libstkcomms requires the Windows SDK")
   endif()
@@ -68,6 +67,10 @@ if(WIN32)
   target_link_libraries(${target} ws2_32)
 else()
   target_link_libraries(${target} pthread)
+  if(NOT APPLE)
+    # The BlueZ header requires GNU extensions.
+    target_compile_options(${target} INTERFACE "-std=gnu++11")
+  endif()
 endif()
 
 # Staging
