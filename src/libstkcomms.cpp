@@ -637,6 +637,42 @@ int stkComms_progHexFile(stkComms_t* comms, const char* filename)
   return 0;
 }
 
+int stkComms_progHexFileEeprom(stkComms_t* comms, const char* filename)
+{
+  hexFile_t* file = hexFile_new();
+  int rc = hexFile_init2(file, filename);
+  if(rc) return rc;
+  uint16_t pageSize;
+  if(comms->formFactor == MOBOT_IL) {
+    pageSize = 256;
+  } else {
+    pageSize = 128;
+  }
+  int i;
+  /* Program the file one 128-byte page at a time */
+  uint8_t* buf = (uint8_t*)malloc(sizeof(uint8_t)*(pageSize + 10));
+  uint16_t address = 0; // The address adresses 2-byte locations
+  while(address*2 < hexFile_len(file))
+  {
+    stkComms_loadAddress(comms, address);
+    for(
+        i = 0; 
+        (i < pageSize) && ((address*2 + i) < hexFile_len(file)); 
+        i++) 
+    {
+      buf[i] = hexFile_getByte(file, (address*2 + i));
+    }
+    stkComms_progPageEeprom(comms, buf, i);
+    address += pageSize/2;
+    /* Update the progress tracker */
+    stkComms_setProgress(comms, 0.5 * ((double)address*2) / (double)hexFile_len(file));
+  }
+  hexFile_destroy(file);
+  free(file);
+  free(buf);
+  return 0;
+}
+
 int stkComms_checkFlash(stkComms_t* comms, const char* filename)
 {
   hexFile_t* hf = hexFile_new();
@@ -710,6 +746,32 @@ int stkComms_progPage(stkComms_t* comms, uint8_t* data, uint16_t size)
   buf[1] = size >> 8;
   buf[2] = size & 0xFF;
   buf[3] = 'F';
+  memcpy(&buf[4], data, size);
+  buf[size+4] = Sync_CRC_EOP;
+  int rc;
+  if(rc = stkComms_sendBytes(comms, buf, size+5)) {
+    return rc;
+  }
+  rc = stkComms_recvBytes(comms, buf, 2, size);
+  if(rc != 2) {
+    return -1;
+  }
+  if(buf[0] != Resp_STK_INSYNC) {
+    return -1;
+  } 
+  if(buf[1] != Resp_STK_OK) {
+    return -1;
+  }
+  return 0;
+}
+
+int stkComms_progPageEeprom(stkComms_t* comms, uint8_t* data, uint16_t size)
+{
+  uint8_t *buf = (uint8_t*)malloc(sizeof(uint8_t)*(size + 10));
+  buf[0] = Cmnd_STK_PROG_PAGE;
+  buf[1] = size >> 8;
+  buf[2] = size & 0xFF;
+  buf[3] = 'E';
   memcpy(&buf[4], data, size);
   buf[size+4] = Sync_CRC_EOP;
   int rc;
