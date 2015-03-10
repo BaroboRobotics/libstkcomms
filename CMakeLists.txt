@@ -57,4 +57,4 @@ else()
   set(dest lib)
 endif()
 
-install(TARGETS ${target} DESTINATION ${dest})
+#install(TARGETS ${target} DESTINATION ${dest})
