@@ -83,16 +83,13 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 {
   /* Check the file name. If we receive something like "COM45", we want to
    * change it to "\\.\COM45" */
-  char *tty;
-  tty = (char*)malloc((sizeof(char)*strlen(ttyfilename))+20);
-  tty[0] = '\0';
-  if(ttyfilename[0] != '\\') {
-    strcpy(tty, "\\\\.\\");
+  auto tty = std::string{ttyfilename};
+  if (tty[0] != '\\') {
+    tty.insert(0, "\\\\.\\");
   }
-  strcat(tty, ttyfilename);
   /* For windows, we should connect to a com port */
   comms->commHandle = CreateFile(
-      tty, 
+      tty.c_str(),
       GENERIC_READ | GENERIC_WRITE,
       0,
       0,
@@ -102,7 +99,6 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 #ifdef VERBOSE
   fprintf(stderr, "New commhandle at: 0x%X -> 0x%X\n", &comms->commHandle, comms->commHandle);
 #endif
-  free(tty);
   if(comms->commHandle == INVALID_HANDLE_VALUE) {
     //fprintf(stderr, "Error connecting to COM port: %s\n", ttyfilename);
     return -1;
