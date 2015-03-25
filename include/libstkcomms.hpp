@@ -1,6 +1,6 @@
 #ifndef _LIBSTKCOMMS_HPP_
 #define _LIBSTKCOMMS_HPP_
-#if !defined (_WIN32) and !defined(_MSYS)
+#if !defined (_WIN32) && !defined(_MSYS)
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>

@@ -55,7 +55,7 @@ int stkComms_init(stkComms_t* comms)
 {
   comms->isConnected = false;
   comms->programComplete = 0;
-#if defined (_WIN32) or defined (_MSYS)
+#if defined (_WIN32) || defined (_MSYS)
   memset(&comms->ov, 0, sizeof(OVERLAPPED));
   comms->ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 #endif
@@ -78,10 +78,9 @@ int stkComms_destroy(stkComms_t* comms)
   return 0;
 }
 
-#if defined (_WIN32) or defined (_MSYS)
+#if defined (_WIN32) || defined (_MSYS)
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 {
-  int rc;
   /* Check the file name. If we receive something like "COM45", we want to
    * change it to "\\.\COM45" */
   char *tty;
@@ -297,11 +296,10 @@ int stkComms_disconnect(stkComms_t* comms)
 
 int stkComms_setSocket(stkComms_t* comms, int socket)
 {
-  int flags;
   comms->socket = socket;
   /* Make the socket non-blocking */
 #ifndef _WIN32
-  flags = fcntl(comms->socket, F_GETFL, 0);
+  int flags = fcntl(comms->socket, F_GETFL, 0);
   fcntl(comms->socket, F_SETFL, flags | O_NONBLOCK);
 #else
   ioctlsocket(comms->socket, FIONBIO, (u_long*)1);
@@ -911,7 +909,7 @@ int stkComms_sendBytes(stkComms_t* comms, void* buf, size_t len)
 
 int stkComms_recvBytes(stkComms_t* comms, uint8_t* buf, size_t expectedBytes, size_t size)
 {
-  int len = 0;
+  size_t len = 0;
   int rc;
   uint8_t *mybuf = (uint8_t*)malloc(size*sizeof(uint8_t));
 
@@ -932,7 +930,7 @@ int stkComms_recvBytes(stkComms_t* comms, uint8_t* buf, size_t expectedBytes, si
           comms->commHandle);
 #endif
       SetLastError(0);
-      bool success = ReadFile(
+      auto success = ReadFile(
           comms->commHandle,
           (LPVOID)mybuf,
           expectedBytes,
