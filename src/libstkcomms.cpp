@@ -37,6 +37,8 @@
 #include <IOKit/serial/ioss.h>
 #endif
 
+#include <cassert>
+
 //#ifdef DEBUG
 //#define THROW throw
 //#else
@@ -149,7 +151,9 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
   comms->socket = open(ttyfilename, O_NONBLOCK | O_RDWR | O_NOCTTY);
   if(-1 == comms->socket) {
     char errbuf[256];
-    strerror_r(errno, errbuf, sizeof(errbuf));
+    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+    assert(!rc);
+    (void)rc;
     fprintf(stderr, "ERROR: open(): %s\n", errbuf);
     return -1;
   }
@@ -162,7 +166,9 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
   int status = tcgetattr(comms->socket, &term);
   if (status) {
     char errbuf[256];
-    strerror_r(errno, errbuf, sizeof(errbuf));
+    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+    assert(!rc);
+    (void)rc;
     fprintf(stderr, "ERROR: tcgetattr(): %s\n", errbuf);
     return -1;
   }
@@ -198,21 +204,27 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 
   if (-1 == cfsetispeed(&term, B57600 )) {
     char errbuf[256];
-    strerror_r(errno, errbuf, sizeof(errbuf));
+    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+    assert(!rc);
+    (void)rc;
     fprintf(stderr, "ERROR: cfsetispeed(): %s\n", errbuf);
     return -1;
   }
 
   if (-1 == cfsetospeed(&term, B57600)) {
     char errbuf[256];
-    strerror_r(errno, errbuf, sizeof(errbuf));
+    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+    assert(!rc);
+    (void)rc;
     fprintf(stderr, "ERROR: cfsetospeed(): %s\n", errbuf);
     return -1;
   }
 
   if (-1 == tcsetattr(comms->socket, TCSANOW, &term)) {
     char errbuf[256];
-    strerror_r(errno, errbuf, sizeof(errbuf));
+    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+    assert(!rc);
+    (void)rc;
     fprintf(stderr, "ERROR: Configuring %s: %s.\n", ttyfilename, errbuf);
     return -1;
   }
@@ -244,7 +256,9 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
      * make sure it got set. */
     if (-1 == tcgetattr(comms->socket, &term)) {
       char errbuf[256];
-      strerror_r(errno, errbuf, sizeof(errbuf));
+      auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+      assert(!rc);
+      (void)rc;
       fprintf(stderr, "(barobo) ERROR: in dongleOpen, tcgetattr(): %s\n", errbuf);
       return -1;
     }
@@ -269,7 +283,9 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 
   if (-1 == tcflush(comms->socket, TCIOFLUSH)) {
     char errbuf[256];
-    strerror_r(errno, errbuf, sizeof(errbuf));
+    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
+    assert(!rc);
+    (void)rc;
     fprintf(stderr, "(barobo) ERROR: in dongleOpen, tcflush(): %s\n", errbuf);
     return -1;
   }
