@@ -1,7 +1,7 @@
 # STK Communications library
 # Barobo, Inc.
 
-cmake_minimum_required(VERSION 2.8.9)
+cmake_minimum_required(VERSION 3.2.1)
 
 set(target stkcomms)
 
@@ -27,6 +27,8 @@ set_target_properties(${target} PROPERTIES
   VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
   SOVERSION ${VERSION_MAJOR}
   MACOSX_RPATH ON
+  CXX_STANDARD 11
+  CXX_STANDARD_REQUIRED ON
 )
 target_compile_definitions(${target}
   PRIVATE "-DBUILD_CSTKCOMMS"
@@ -41,10 +43,6 @@ if(WIN32)
   target_link_libraries(${target} ws2_32)
 else()
   target_link_libraries(${target} pthread)
-  if(NOT APPLE)
-    # The BlueZ header requires GNU extensions.
-    target_compile_options(${target} INTERFACE "-std=gnu++11")
-  endif()
 endif()
 
 # Staging
