@@ -101,6 +101,8 @@ typedef struct hexFile_s
     uint8_t *data;
     int dataAllocSize;
     int len;
+    int startAddress;
+    int addressOffset;
 } hexFile_t;
 #else
 struct hexFile_s;

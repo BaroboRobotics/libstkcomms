@@ -663,7 +663,7 @@ int stkComms_progHexFileEeprom(stkComms_t* comms, const char* filename)
   int i;
   /* Program the file one 128-byte page at a time */
   uint8_t* buf = (uint8_t*)malloc(sizeof(uint8_t)*(pageSize + 10));
-  uint16_t address = 0; // The address adresses 2-byte locations
+  uint16_t address = file->startAddress; // The address adresses 2-byte locations
   while(address*2 < hexFile_len(file))
   {
     stkComms_loadAddress(comms, address);
@@ -677,7 +677,7 @@ int stkComms_progHexFileEeprom(stkComms_t* comms, const char* filename)
     stkComms_progPageEeprom(comms, buf, i);
     address += pageSize/2;
     /* Update the progress tracker */
-    stkComms_setProgress(comms, 0.5 * ((double)address*2) / (double)hexFile_len(file));
+    //stkComms_setProgress(comms, 0.5 * ((double)address*2) / (double)hexFile_len(file));
   }
   hexFile_destroy(file);
   free(file);
@@ -1034,6 +1034,8 @@ int hexFile_init(hexFile_t* hf)
   hf->data = NULL;
   hf->dataAllocSize = 0;
   hf->len = 0;
+  hf->startAddress = -1;
+  hf->addressOffset = 0;
   return 0;
 }
 
@@ -1042,6 +1044,8 @@ int hexFile_init2(hexFile_t* hf, const char* filename)
   hf->data = NULL;
   hf->dataAllocSize = 0;
   hf->len = 0;
+  hf->startAddress = -1;
+  hf->addressOffset = 0;
   return hexFile_loadFile(hf, filename);
 }
 
@@ -1123,6 +1127,10 @@ void hexFile_parseLine(hexFile_t* hf, const char* line)
   memset(buf, 0, sizeof(char)*10);
   strncpy(buf, &line[3], 4);
   sscanf(buf, "%x", &address);
+  if(hf->startAddress == -1) {
+      hf->startAddress = address/2;
+  }
+  address += hf->addressOffset;
   // Next two chars are the type
   memset(buf, 0, sizeof(char)*10);
   strncpy(buf, &line[7], 2);
@@ -1130,12 +1138,18 @@ void hexFile_parseLine(hexFile_t* hf, const char* line)
 
   /* Now we need to check the type. If the type is data, make sure we have
    * enough space in our buffer and read the data */
-  if(type != HEXLINE_DATA) {
-    return;
+  switch(type) {
+      case HEXLINE_DATA:
+          break;
+      case HEXLINE_EXADDR:
+          hf->addressOffset += 0x10000;
+          // Intentional no-break
+      default:
+          return;
   }
 
   /* Check size */
-  while(hf->len + byteCount >= hf->dataAllocSize) {
+  while(address + byteCount >= hf->dataAllocSize) {
     hexFile_realloc(hf);
   }
   uint8_t checktest = 0;
@@ -1145,10 +1159,12 @@ void hexFile_parseLine(hexFile_t* hf, const char* line)
   for(i = 0; i < byteCount; i++) {
     strncpy(buf, str, 2);
     sscanf(buf, "%x", &value);
-    hf->data[hf->len] = value;
+    hf->data[address+i] = value;
     checktest += value;
-    hf->len++;
     str += 2;
+  }
+  if(address+byteCount > hf->len) {
+      hf->len = address+byteCount;
   }
   sscanf(str, "%x", &checksum);
   // 2's complement the checktest 

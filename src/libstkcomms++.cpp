@@ -14,7 +14,7 @@
    You should have received a copy of the GNU General Public License
    along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+#include <iostream>
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -167,8 +167,106 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
   return 0;  
 }
 
+int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, int hwRev)
+{
+  if(handshake()) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  if(setDevice()) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  if(setDeviceExt()) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  if(enterProgMode()) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  if(checkSignature()) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  /*
+  if(writeData(0x11, hwRev)) {
+    THROW;
+    return -1;
+  }
+  */
+  if (hwRev) {
+    if(progFuses()) {
+      THROW;
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+      stkComms_setProgramComplete(_comms, 0);
+      return -1;
+    }
+  }
+  if(progHexFile(hexFileName)) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  if(progHexFileEeprom(eepromHexFile)) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+  fprintf(stderr, "done\n");
+#if 0
+  if(checkFlash(hexFileName)) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+#endif
+  if(leaveProgMode()) {
+    THROW;
+    if (hwRev) {
+      printf("programming failed %s:%d\n", __FILE__, __LINE__);
+    }
+    stkComms_setProgramComplete(_comms, 0);
+    return -1;
+  }
+	stkComms_setProgress(_comms, hwRev ? 1.1 : 1.0);
+	stkComms_setProgramComplete(_comms, 1);
+
+  return 0;  
+}
+
 struct programAllThreadArg{
   std::string hexFileName;
+  std::string eepromHexFileName;
   CStkComms* stkComms;
   int hwRev;
   bool disconnect_and_delete;
@@ -178,6 +276,17 @@ void* programAllThread(void* arg)
 {
   programAllThreadArg *a = (programAllThreadArg*)arg;
   a->stkComms->programAll(a->hexFileName.c_str(), a->hwRev);
+  if (a->disconnect_and_delete) {
+    a->stkComms->disconnect();
+    delete a->stkComms;
+  }
+  return NULL;
+}
+
+void* programAllEepromThread(void* arg)
+{
+  programAllThreadArg *a = (programAllThreadArg*)arg;
+  a->stkComms->programAll(a->hexFileName.c_str(), a->eepromHexFileName.c_str(), a->hwRev);
   if (a->disconnect_and_delete) {
     a->stkComms->disconnect();
     delete a->stkComms;
@@ -201,6 +310,27 @@ int CStkComms::programAllAsync(std::string hexFileName, int hwRev,
   stkComms_setProgressAndCompletionCallbacks(_comms, progressCallback,
       completionCallback, user_data);
   THREAD_CREATE(&thread, programAllThread, a);
+  return 0;
+}
+
+int CStkComms::programAllAsync(std::string hexFileName, 
+    std::string eepromHexFileName, int hwRev,
+    stkComms_progressCallbackFunc progressCallback,
+    stkComms_completionCallbackFunc completionCallback,
+    void* user_data,
+    int flags)
+{
+  THREAD_T thread;
+  struct programAllThreadArg *a = new programAllThreadArg;
+  a->hexFileName = hexFileName;
+  a->eepromHexFileName = eepromHexFileName;
+  a->stkComms = this;
+  a->hwRev = hwRev;
+  a->disconnect_and_delete = DISCONNECT_AND_DELETE & flags;
+	stkComms_setProgress(_comms, 0.01);
+  stkComms_setProgressAndCompletionCallbacks(_comms, progressCallback,
+      completionCallback, user_data);
+  THREAD_CREATE(&thread, programAllEepromThread, a);
   return 0;
 }
 
@@ -301,6 +431,11 @@ int CStkComms::loadAddress(uint16_t address)
 int CStkComms::progHexFile(const char* filename)
 {
   return stkComms_progHexFile(_comms, filename);
+}
+
+int CStkComms::progHexFileEeprom(const char* filename)
+{
+  return stkComms_progHexFileEeprom(_comms, filename);
 }
 
 int CStkComms::checkFlash(const char* filename)

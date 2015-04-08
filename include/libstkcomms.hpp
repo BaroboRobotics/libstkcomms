@@ -46,7 +46,13 @@ class CStkComms
   int connectWithTTY(const char* ttyfilename);
   int setSocket(int socket);
   int programAll(const char* hexFileName, int hwRev = 0);
+  int programAll(const char* hexFileName, const char* eepromHexFileName, int hwRev = 0);
   int programAllAsync(std::string hexFileName, int hwRev = 0,
+      stkComms_progressCallbackFunc progressCallback = 0,
+      stkComms_completionCallbackFunc completionCallback = 0,
+      void* user_data = 0,
+      int flags = NO_FLAGS);
+  int programAllAsync(std::string hexFileName, std::string eepromHexFileName, int hwRev = 0,
       stkComms_progressCallbackFunc progressCallback = 0,
       stkComms_completionCallbackFunc completionCallback = 0,
       void* user_data = 0,
@@ -87,6 +93,7 @@ class CStkComms
   int checkSignature();
   int loadAddress(uint16_t address);
   int progHexFile(const char* filename);
+  int progHexFileEeprom(const char* filename);
   int progPage(uint8_t* data, uint16_t size);
   int progFuses();
   int readData(uint16_t address, uint8_t *byte);
