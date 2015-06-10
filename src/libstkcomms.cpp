@@ -369,7 +369,7 @@ int stkComms_handshake(stkComms_t* comms)
 {
   uint8_t buf[10];
   int len;
-  while(1) {
+  for(;;) {
     buf[0] = Cmnd_STK_GET_SYNC;
     buf[1] = Sync_CRC_EOP;
     stkComms_sendBytes(comms, buf, 2);
@@ -624,7 +624,7 @@ int stkComms_progHexFile(stkComms_t* comms, const char* filename)
   } else {
     pageSize = 128;
   }
-  int i;
+  uint16_t i;
   /* Program the file one 128-byte page at a time */
   uint8_t* buf = (uint8_t*)malloc(sizeof(uint8_t)*(pageSize + 10));
   uint16_t address = 0; // The address adresses 2-byte locations
@@ -663,7 +663,8 @@ int stkComms_progHexFileEeprom(stkComms_t* comms, const char* filename)
   int i;
   /* Program the file one 128-byte page at a time */
   uint8_t* buf = (uint8_t*)malloc(sizeof(uint8_t)*(pageSize + 10));
-  uint16_t address = file->startAddress; // The address adresses 2-byte locations
+  auto address = uint16_t(file->startAddress); // The address adresses 2-byte locations
+  assert(address == file->startAddress);
   while(address*2 < hexFile_len(file))
   {
     stkComms_loadAddress(comms, address);
