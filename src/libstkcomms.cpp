@@ -869,7 +869,7 @@ int stkComms_universal(stkComms_t* comms, uint8_t byte1, uint8_t byte2, uint8_t 
   buf[4] = byte4;
   buf[5] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 6)) {
+  if((rc = stkComms_sendBytes(comms, buf, 6))) {
     return rc;
   }
   rc = stkComms_recvBytes(comms, buf, 3, 10);
