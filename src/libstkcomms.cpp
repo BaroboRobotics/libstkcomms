@@ -443,7 +443,7 @@ int stkComms_setDevice(
   buf[20] =      flashsize1;
   buf[21] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 22)) {
+  if((rc = stkComms_sendBytes(comms, buf, 22))) {
     THROW;
   }
   rc = stkComms_recvBytes(comms, buf, 2, 25);
@@ -476,7 +476,7 @@ int stkComms_setDeviceExt(
   buf[5] = resetdisable;
   buf[6] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 7)) {
+  if((rc = stkComms_sendBytes(comms, buf, 7))) {
     THROW;
     return rc;
   }
@@ -502,7 +502,7 @@ int stkComms_enterProgMode(stkComms_t* comms)
   buf[0] = Cmnd_STK_ENTER_PROGMODE;
   buf[1] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 2)) {
+  if((rc = stkComms_sendBytes(comms, buf, 2))) {
     return rc;
   }
   rc = stkComms_recvBytes(comms, buf, 2, 10);
@@ -524,7 +524,7 @@ int stkComms_leaveProgMode(stkComms_t* comms)
   buf[0] = Cmnd_STK_LEAVE_PROGMODE;
   buf[1] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 2)) {
+  if((rc = stkComms_sendBytes(comms, buf, 2))) {
     return rc;
   }
   rc = stkComms_recvBytes(comms, buf, 2, 10);
@@ -547,7 +547,7 @@ int stkComms_checkSignature(stkComms_t* comms)
   buf[0] = Cmnd_STK_READ_SIGN;
   buf[1] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 2)) {
+  if((rc = stkComms_sendBytes(comms, buf, 2))) {
     return rc;
   }
   rc = stkComms_recvBytes(comms, buf, 5, 10);
@@ -592,7 +592,7 @@ int stkComms_loadAddress(stkComms_t* comms, uint16_t address)
   buf[2] = address>>8;
   buf[3] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, 4))
+  if((rc = stkComms_sendBytes(comms, buf, 4)))
   {
     return -1;
   }
@@ -718,7 +718,7 @@ int stkComms_checkPage(stkComms_t* comms, hexFile_t* hexfile, uint16_t address, 
 {
   /* First, load the address */
   int rc;
-  if(rc = stkComms_loadAddress(comms, address)) {
+  if((rc = stkComms_loadAddress(comms, address))) {
     THROW;
     return rc;
   }
@@ -762,7 +762,7 @@ int stkComms_progPage(stkComms_t* comms, uint8_t* data, uint16_t size)
   memcpy(&buf[4], data, size);
   buf[size+4] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, size+5)) {
+  if((rc = stkComms_sendBytes(comms, buf, size+5))) {
     return rc;
   }
   rc = stkComms_recvBytes(comms, buf, 2, size);
@@ -788,7 +788,7 @@ int stkComms_progPageEeprom(stkComms_t* comms, uint8_t* data, uint16_t size)
   memcpy(&buf[4], data, size);
   buf[size+4] = Sync_CRC_EOP;
   int rc;
-  if(rc = stkComms_sendBytes(comms, buf, size+5)) {
+  if((rc = stkComms_sendBytes(comms, buf, size+5))) {
     return rc;
   }
   rc = stkComms_recvBytes(comms, buf, 2, size);
@@ -816,14 +816,14 @@ int stkComms_progFuses(stkComms_t* comms)
 int stkComms_readData(stkComms_t* comms, uint16_t address, uint8_t *byte)
 {
   int rc;
-  if(rc = stkComms_loadAddress(comms, address)) {
+  if((rc = stkComms_loadAddress(comms, address))) {
     THROW;
     return -1;
   }
   uint8_t buf[10];
   buf[0] = Cmnd_STK_READ_DATA;
   buf[1] = Sync_CRC_EOP;
-  if(rc = stkComms_sendBytes(comms, buf, 2)) {
+  if((rc = stkComms_sendBytes(comms, buf, 2))) {
     THROW;
     return -1;
   }
@@ -839,7 +839,7 @@ int stkComms_readData(stkComms_t* comms, uint16_t address, uint8_t *byte)
 int stkComms_writeData(stkComms_t* comms, uint16_t address, uint8_t byte)
 {
   int rc;
-  if(rc = stkComms_loadAddress(comms, address)) {
+  if((rc = stkComms_loadAddress(comms, address))) {
     THROW;
     return -1;
   }
@@ -847,7 +847,7 @@ int stkComms_writeData(stkComms_t* comms, uint16_t address, uint8_t byte)
   buf[0] = Cmnd_STK_PROG_DATA;
   buf[1] = byte;
   buf[2] = Sync_CRC_EOP;
-  if(rc = stkComms_sendBytes(comms, buf, 3)) {
+  if((rc = stkComms_sendBytes(comms, buf, 3))) {
     THROW;
     return -1;
   }
