@@ -40,6 +40,9 @@ if(WIN32)
   target_compile_definitions(${target}
     PRIVATE "-D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN"
   )
+  target_compile_options(${target} PRIVATE /wd4100 # these two warnings are only because of VERBOSE macro
+                                           /wd4189
+                                           )
   target_link_libraries(${target} ws2_32)
 else()
   target_link_libraries(${target} pthread)

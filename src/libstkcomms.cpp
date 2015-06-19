@@ -660,7 +660,7 @@ int stkComms_progHexFileEeprom(stkComms_t* comms, const char* filename)
   } else {
     pageSize = 128;
   }
-  int i;
+  uint16_t i;
   /* Program the file one 128-byte page at a time */
   uint8_t* buf = (uint8_t*)malloc(sizeof(uint8_t)*(pageSize + 10));
   auto address = uint16_t(file->startAddress); // The address adresses 2-byte locations
@@ -690,7 +690,7 @@ int stkComms_checkFlash(stkComms_t* comms, const char* filename)
 {
   hexFile_t* hf = hexFile_new();
   hexFile_init2(hf, filename);
-  int i;
+  uint16_t i;
   uint16_t addrIncr;
   uint16_t pageSize;
   if(comms->formFactor == MOBOT_IL) {
@@ -702,7 +702,7 @@ int stkComms_checkFlash(stkComms_t* comms, const char* filename)
   }
   for(i = 0; i*2 < hexFile_len(hf); i += addrIncr)
   {
-    if(stkComms_checkPage(comms, hf, i, i*2+pageSize > hexFile_len(hf)? hexFile_len(hf) - i*2 : pageSize))
+    if(stkComms_checkPage(comms, hf, i, i*2+pageSize > hexFile_len(hf)? uint16_t(hexFile_len(hf) - i*2) : pageSize))
     {
       THROW;
       return -1;
@@ -1150,7 +1150,7 @@ void hexFile_parseLine(hexFile_t* hf, const char* line)
   }
 
   /* Check size */
-  while(address + byteCount >= hf->dataAllocSize) {
+  while(address + byteCount >= unsigned int(hf->dataAllocSize)) {
     hexFile_realloc(hf);
   }
   uint8_t checktest = 0;
