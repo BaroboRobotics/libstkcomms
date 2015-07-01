@@ -1150,7 +1150,7 @@ void hexFile_parseLine(hexFile_t* hf, const char* line)
   }
 
   /* Check size */
-  while(address + byteCount >= unsigned int(hf->dataAllocSize)) {
+  while(address + byteCount >= unsigned(hf->dataAllocSize)) {
     hexFile_realloc(hf);
   }
   uint8_t checktest = 0;
