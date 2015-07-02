@@ -38,6 +38,7 @@
 #endif
 
 #include <cassert>
+#include <chrono>
 
 //#ifdef DEBUG
 //#define THROW throw
@@ -159,7 +160,7 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
   }
 
 #ifdef __MACH__
-  sleep(1);
+  std::this_thread::sleep_for(std::chrono::milliseconds(500)); // kDongleSettleTimeAfterOpen in daemon
 #endif
 
   struct termios term;
@@ -279,7 +280,7 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 #ifdef __MACH__
   write(comms->socket, NULL, 0);
 #endif
-  sleep(1);
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   if (-1 == tcflush(comms->socket, TCIOFLUSH)) {
     char errbuf[256];
