@@ -18,6 +18,9 @@ set(VERSION_MINOR 0)
 set(VERSION_PATCH 0)
 set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
+set(Boost_USE_STATIC_LIBS ON)
+find_package(Boost 1.59.0 REQUIRED COMPONENTS system filesystem log thread date_time regex)
+
 # Targets and properties
 
 add_library(${target}
@@ -34,18 +37,19 @@ target_compile_definitions(${target}
   PRIVATE "-DBUILD_CSTKCOMMS"
 )
 
-target_include_directories(${target} PUBLIC include)
+target_include_directories(${target} PUBLIC include ${Boost_INCLUDE_DIRS})
+target_link_libraries(${target} PUBLIC baromesh-common ${Boost_LIBRARIES})
 
 if(WIN32)
   target_compile_definitions(${target}
-    PRIVATE "-D_WIN32_WINNT=0x0502 -DWIN32_LEAN_AND_MEAN"
+    PUBLIC _WIN32_WINNT=0x0501 WIN32_LEAN_AND_MEAN
   )
   target_compile_options(${target} PRIVATE /wd4100 # these two warnings are only because of VERBOSE macro
                                            /wd4189
                                            )
-  target_link_libraries(${target} ws2_32)
+  target_link_libraries(${target} PUBLIC ws2_32)
 else()
-  target_link_libraries(${target} pthread)
+  target_link_libraries(${target} PUBLIC pthread)
 endif()
 
 # Staging

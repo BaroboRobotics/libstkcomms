@@ -14,6 +14,7 @@ typedef unsigned char uint8_t;
 #endif
 #include "libstkcomms.h"
 
+#include <memory>
 #include <string>
 
 class CHexFile
@@ -44,7 +45,6 @@ class CStkComms
   ~CStkComms();
   //int connect(const char addr[]);
   int connectWithTTY(const char* ttyfilename);
-  int setSocket(int socket);
   int programAll(const char* hexFileName, int hwRev = 0);
   int programAll(const char* hexFileName, const char* eepromHexFileName, int hwRev = 0);
   int programAllAsync(std::string hexFileName, int hwRev = 0,
@@ -102,12 +102,9 @@ class CStkComms
   int checkPage(CHexFile* hexfile, uint16_t address, uint16_t size = 0x80);
   int universal(uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4);
   int sendBytes(void* buf, size_t len);
-  int setdtr (int on);
-  int recvBytes(uint8_t* buf, size_t expectedBytes, size_t size);
-  int recvBytes(uint8_t* buf, size_t size);
 
   private:
-  struct stkComms_s* _comms;
+  std::unique_ptr<stkComms_t> _comms;
 };
 
 enum hexLineType_e
