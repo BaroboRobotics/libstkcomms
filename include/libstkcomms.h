@@ -18,6 +18,10 @@
 #ifndef _LIBSTKCOMMS_H_
 #define _LIBSTKCOMMS_H_
 
+#include "baromesh/iocore.hpp"
+
+#include <boost/asio/serial_port.hpp>
+
 #include <stdint.h>
 
 #ifndef _WIN32
@@ -57,14 +61,14 @@ typedef void (*stkComms_completionCallbackFunc) (int status, void* user_data);
 #include "thread_macros.h"
 typedef struct stkComms_s
 {
-  int socket;
+  stkComms_s () : ioCore(baromesh::IoCore::get()), serialPort(ioCore->ios()) {}
+  ~stkComms_s () = default;
+
+  std::shared_ptr<baromesh::IoCore> ioCore;
+  boost::asio::serial_port serialPort;
   int isConnected;
   int programComplete;
   uint8_t signature[3];
-#if defined (_WIN32) || defined (_MSYS)
-  HANDLE commHandle;
-  OVERLAPPED ov;
-#endif
 
   MUTEX_T* progressLock;
   COND_T* progressCond;
@@ -116,7 +120,6 @@ int stkComms_destroy(stkComms_t* comms);
 //int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address);
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename);
 int stkComms_disconnect(stkComms_t* comms);
-int stkComms_setSocket(stkComms_t* comms, int socket);
 double stkComms_getProgress(stkComms_t* comms);
 void stkComms_setProgress(stkComms_t* comms, double progress);
 void stkComms_setProgressAndCompletionCallbacks(stkComms_t* comms,
@@ -169,11 +172,8 @@ int stkComms_progFuses(stkComms_t* comms);
 int stkComms_readData(stkComms_t* comms, uint16_t address, uint8_t *byte);
 int stkComms_writeData(stkComms_t* comms, uint16_t address, uint8_t byte);
 int stkComms_universal(stkComms_t* comms, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4);
-int stkComms_setdtr (stkComms_t* comms, int on);
 
 int stkComms_sendBytes(stkComms_t* comms, void* buf, size_t len);
-int stkComms_recvBytes(stkComms_t* comms, uint8_t* buf, size_t expectedBytes, size_t size);
-int stkComms_recvBytes2(stkComms_t* comms, uint8_t* buf, size_t size);
 
 void libstkcomms_is_present(void);
 

@@ -42,41 +42,35 @@
 #define THROW
 #endif
 
-CStkComms::CStkComms()
+CStkComms::CStkComms() : _comms(new stkComms_t{})
 {
-  _comms = stkComms_new();
-  stkComms_init(_comms);
+  stkComms_init(_comms.get());
 }
 
 CStkComms::~CStkComms()
 {
-  stkComms_destroy(_comms);
+  stkComms_destroy(_comms.get());
 }
 
 #if 0
 int CStkComms::connect(const char addr[])
 {
 #ifdef _WIN32
-  return stkComms_connectWithTTY(_comms, addr);
+  return stkComms_connectWithTTY(_comms.get(), addr);
 #else
-  return stkComms_connectWithAddressTTY(_comms, addr);
+  return stkComms_connectWithAddressTTY(_comms.get(), addr);
 #endif
 }
 #endif
 
 int CStkComms::connectWithTTY(const char* ttyfilename)
 {
-  return stkComms_connectWithTTY(_comms, ttyfilename);
+  return stkComms_connectWithTTY(_comms.get(), ttyfilename);
 }
 
 int CStkComms::disconnect()
 {
-  return stkComms_disconnect(_comms);
-}
-
-int CStkComms::setSocket(int socket)
-{
-  return stkComms_setSocket(_comms, socket);
+  return stkComms_disconnect(_comms.get());
 }
 
 int CStkComms::programAll(const char* hexFileName, int hwRev)
@@ -86,7 +80,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(setDevice()) {
@@ -94,7 +88,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(setDeviceExt()) {
@@ -102,7 +96,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(enterProgMode()) {
@@ -110,7 +104,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(checkSignature()) {
@@ -118,7 +112,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   /*
@@ -131,7 +125,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if(progFuses()) {
       THROW;
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
-      stkComms_setProgramComplete(_comms, 0);
+      stkComms_setProgramComplete(_comms.get(), 0);
       return -1;
     }
   }
@@ -140,7 +134,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
 #if 0
@@ -149,7 +143,7 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
 #endif
@@ -158,11 +152,11 @@ int CStkComms::programAll(const char* hexFileName, int hwRev)
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
-	stkComms_setProgress(_comms, hwRev ? 1.1 : 1.0);
-	stkComms_setProgramComplete(_comms, 1);
+	stkComms_setProgress(_comms.get(), hwRev ? 1.1 : 1.0);
+	stkComms_setProgramComplete(_comms.get(), 1);
 
   return 0;  
 }
@@ -174,7 +168,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(setDevice()) {
@@ -182,7 +176,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(setDeviceExt()) {
@@ -190,7 +184,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(enterProgMode()) {
@@ -198,7 +192,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(checkSignature()) {
@@ -206,7 +200,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   /*
@@ -219,7 +213,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if(progFuses()) {
       THROW;
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
-      stkComms_setProgramComplete(_comms, 0);
+      stkComms_setProgramComplete(_comms.get(), 0);
       return -1;
     }
   }
@@ -228,7 +222,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   if(progHexFileEeprom(eepromHexFile)) {
@@ -236,7 +230,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
   fprintf(stderr, "done\n");
@@ -246,7 +240,7 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
 #endif
@@ -255,11 +249,11 @@ int CStkComms::programAll(const char* hexFileName, const char* eepromHexFile, in
     if (hwRev) {
       printf("programming failed %s:%d\n", __FILE__, __LINE__);
     }
-    stkComms_setProgramComplete(_comms, 0);
+    stkComms_setProgramComplete(_comms.get(), 0);
     return -1;
   }
-	stkComms_setProgress(_comms, hwRev ? 1.1 : 1.0);
-	stkComms_setProgramComplete(_comms, 1);
+	stkComms_setProgress(_comms.get(), hwRev ? 1.1 : 1.0);
+	stkComms_setProgramComplete(_comms.get(), 1);
 
   return 0;  
 }
@@ -306,8 +300,8 @@ int CStkComms::programAllAsync(std::string hexFileName, int hwRev,
   a->stkComms = this;
   a->hwRev = hwRev;
   a->disconnect_and_delete = DISCONNECT_AND_DELETE & flags;
-	stkComms_setProgress(_comms, 0.01);
-  stkComms_setProgressAndCompletionCallbacks(_comms, progressCallback,
+	stkComms_setProgress(_comms.get(), 0.01);
+  stkComms_setProgressAndCompletionCallbacks(_comms.get(), progressCallback,
       completionCallback, user_data);
   THREAD_CREATE(&thread, programAllThread, a);
   return 0;
@@ -327,8 +321,8 @@ int CStkComms::programAllAsync(std::string hexFileName,
   a->stkComms = this;
   a->hwRev = hwRev;
   a->disconnect_and_delete = DISCONNECT_AND_DELETE & flags;
-	stkComms_setProgress(_comms, 0.01);
-  stkComms_setProgressAndCompletionCallbacks(_comms, progressCallback,
+	stkComms_setProgress(_comms.get(), 0.01);
+  stkComms_setProgressAndCompletionCallbacks(_comms.get(), progressCallback,
       completionCallback, user_data);
   THREAD_CREATE(&thread, programAllEepromThread, a);
   return 0;
@@ -336,16 +330,16 @@ int CStkComms::programAllAsync(std::string hexFileName,
 
 double CStkComms::getProgress()
 {
-  return stkComms_getProgress(_comms);
+  return stkComms_getProgress(_comms.get());
 }
 
 int CStkComms::isProgramComplete() {
-  return stkComms_isProgramComplete(_comms);
+  return stkComms_isProgramComplete(_comms.get());
 }
 
 int CStkComms::handshake()
 {
-  return stkComms_handshake(_comms);
+  return stkComms_handshake(_comms.get());
 }
 
 int CStkComms::setDevice(
@@ -370,7 +364,7 @@ int CStkComms::setDevice(
       uint8_t     flashsize2,
       uint8_t     flashsize1)
 {
-  return stkComms_setDevice(_comms,
+  return stkComms_setDevice(_comms.get(),
       DeviceCode,
       Revision,
       progtype,
@@ -400,7 +394,7 @@ int CStkComms::setDeviceExt(
       uint8_t    signalbs2,
       uint8_t    resetdisable)
 {
-  return stkComms_setDeviceExt( _comms,
+  return stkComms_setDeviceExt( _comms.get(),
       commandsize,
       eeprompagesize,
       signalpagel,
@@ -410,67 +404,67 @@ int CStkComms::setDeviceExt(
 
 int CStkComms::enterProgMode()
 {
-  return stkComms_enterProgMode(_comms);
+  return stkComms_enterProgMode(_comms.get());
 }
 
 int CStkComms::leaveProgMode()
 {
-  return stkComms_leaveProgMode(_comms);
+  return stkComms_leaveProgMode(_comms.get());
 }
 
 int CStkComms::checkSignature()
 {
-  return stkComms_checkSignature(_comms);
+  return stkComms_checkSignature(_comms.get());
 }
 
 int CStkComms::loadAddress(uint16_t address)
 {
-  return stkComms_loadAddress(_comms, address);
+  return stkComms_loadAddress(_comms.get(), address);
 }
 
 int CStkComms::progHexFile(const char* filename)
 {
-  return stkComms_progHexFile(_comms, filename);
+  return stkComms_progHexFile(_comms.get(), filename);
 }
 
 int CStkComms::progHexFileEeprom(const char* filename)
 {
-  return stkComms_progHexFileEeprom(_comms, filename);
+  return stkComms_progHexFileEeprom(_comms.get(), filename);
 }
 
 int CStkComms::checkFlash(const char* filename)
 {
-  return stkComms_checkFlash(_comms, filename);
+  return stkComms_checkFlash(_comms.get(), filename);
 }
 
 int CStkComms::checkPage(CHexFile* hexfile, uint16_t address, uint16_t size)
 {
-  return stkComms_checkPage(_comms, hexfile->_hf, address, size);
+  return stkComms_checkPage(_comms.get(), hexfile->_hf, address, size);
 }
 
 int CStkComms::progPage(uint8_t* data, uint16_t size)
 {
-  return stkComms_progPage(_comms, data, size);
+  return stkComms_progPage(_comms.get(), data, size);
 }
 
 int CStkComms::progFuses()
 {
-  return stkComms_progFuses(_comms);
+  return stkComms_progFuses(_comms.get());
 }
 
 int CStkComms::readData(uint16_t address, uint8_t *byte)
 {
-  return stkComms_readData(_comms, address, byte);
+  return stkComms_readData(_comms.get(), address, byte);
 }
 
 int CStkComms::writeData(uint16_t address, uint8_t byte)
 {
-  return stkComms_writeData(_comms, address, byte);
+  return stkComms_writeData(_comms.get(), address, byte);
 }
 
 int CStkComms::universal(uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4)
 {
-  return stkComms_universal(_comms,
+  return stkComms_universal(_comms.get(),
       byte1,
       byte2,
       byte3,
@@ -479,23 +473,8 @@ int CStkComms::universal(uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t by
 
 int CStkComms::sendBytes(void* buf, size_t len)
 {
-  return stkComms_sendBytes(_comms, buf, len);
+  return stkComms_sendBytes(_comms.get(), buf, len);
 }
-
-int CStkComms::recvBytes(uint8_t* buf, size_t expectedBytes, size_t size)
-{
-  return stkComms_recvBytes(_comms, buf, expectedBytes, size);
-}
-
-int CStkComms::recvBytes(uint8_t* buf, size_t size)
-{
-  return stkComms_recvBytes2(_comms, buf, size);
-}
-
-int CStkComms::setdtr (int on)
-{
-  return stkComms_setdtr(_comms, on);
-} 
 
 CHexFile::CHexFile()
 {

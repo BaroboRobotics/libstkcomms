@@ -15,6 +15,15 @@
    along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "baromesh/setserialportoptions.hpp"
+
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/read.hpp>
+#include <boost/asio/write.hpp>
+
+#include <boost/log/sources/logger.hpp>
+#include <boost/log/sources/record_ostream.hpp>
+
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -48,21 +57,12 @@
 //#endif
 //#define VERBOSE
 
-stkComms_t* stkComms_new()
-{
-	stkComms_t* comms;
-	comms = (stkComms_t*)malloc(sizeof(stkComms_t));
-	return comms;
-}
+namespace asio = boost::asio;
 
 int stkComms_init(stkComms_t* comms)
 {
   comms->isConnected = false;
   comms->programComplete = 0;
-#if defined (_WIN32) || defined (_MSYS)
-  memset(&comms->ov, 0, sizeof(OVERLAPPED));
-  comms->ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-#endif
   MUTEX_NEW(comms->progressLock);
   MUTEX_INIT(comms->progressLock);
   COND_NEW(comms->progressCond);
@@ -77,56 +77,12 @@ int stkComms_init(stkComms_t* comms)
 
 int stkComms_destroy(stkComms_t* comms)
 {
+  stkComms_disconnect(comms);
   free(comms->progressLock);
   free(comms->progressCond);
   return 0;
 }
 
-#if defined (_WIN32) || defined (_MSYS)
-int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
-{
-  /* Check the file name. If we receive something like "COM45", we want to
-   * change it to "\\.\COM45" */
-  auto tty = std::string{ttyfilename};
-  if (tty[0] != '\\') {
-    tty.insert(0, "\\\\.\\");
-  }
-  /* For windows, we should connect to a com port */
-  comms->commHandle = CreateFile(
-      tty.c_str(),
-      GENERIC_READ | GENERIC_WRITE,
-      0,
-      0,
-      OPEN_EXISTING,
-      FILE_FLAG_OVERLAPPED,
-      0 );
-#ifdef VERBOSE
-  fprintf(stderr, "New commhandle at: 0x%X -> 0x%X\n", &comms->commHandle, comms->commHandle);
-#endif
-  if(comms->commHandle == INVALID_HANDLE_VALUE) {
-    //fprintf(stderr, "Error connecting to COM port: %s\n", ttyfilename);
-    return -1;
-  }
-  /* Adjust settings */
-  DCB dcb;
-  FillMemory(&dcb, sizeof(dcb), 0);
-  dcb.DCBlength = sizeof(dcb);
-  if (!BuildCommDCB("57600,n,8,1", &dcb)) {
-    fprintf(stderr, "Could not build DCB.\n");
-    return -1;
-  }
-  dcb.BaudRate = 57600;
-
-  if (!SetCommState(comms->commHandle, &dcb)) {
-    fprintf(stderr, "Could not set Comm State to new DCB settings.\n");
-    return -1;
-  }
-  
-  comms->isConnected = 1;
-  comms->connectionType = CONNECT_TTY;
-  return 0;
-}
-#else
 #if 0
 int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address)
 {
@@ -143,152 +99,16 @@ int stkComms_connectWithAddressTTY(stkComms_t* comms, const char* address)
 }
 #endif
 
-#define MAX_PATH 1024
 int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
 {
-  /* We use non-blocking I/O here so we can support the POSIX implementation
-   * of dongleTimedReadRaw. dongleTimedReadRaw uses select, which can, per the
-   * man page, return false positives. A false positive would then cause the
-   * subsequent read call to block. XXX: no longer true ... experimenting */
-  comms->socket = open(ttyfilename, O_NONBLOCK | O_RDWR | O_NOCTTY);
-  if(-1 == comms->socket) {
-    char errbuf[256];
-    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-    assert(!rc);
-    (void)rc;
-    fprintf(stderr, "ERROR: open(): %s\n", errbuf);
-    return -1;
+  boost::log::sources::logger lg;
+  try {
+    comms->serialPort.open(ttyfilename);
+    std::this_thread::sleep_for(baromesh::kDongleSettleTimeAfterOpen);
+    baromesh::setSerialPortOptions(comms->serialPort, 57600);
   }
-
-#ifdef __MACH__
-  std::this_thread::sleep_for(std::chrono::milliseconds(500)); // kDongleSettleTimeAfterOpen in daemon
-#endif
-
-  struct termios term;
-  int status = tcgetattr(comms->socket, &term);
-  if (status) {
-    char errbuf[256];
-    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-    assert(!rc);
-    (void)rc;
-    fprintf(stderr, "ERROR: tcgetattr(): %s\n", errbuf);
-    return -1;
-  }
-
-  /* The following code appears to be from:
-   * http://en.wikibooks.org/wiki/Serial_Programming/termios
-   * Refer there for appropriate comments--the gist is that we're setting up
-   * a serial link suitable for passing binary data, rather than a traditional
-   * ASCII terminal. The flag settings are very similar to cfmakeraw. */
-
-  // Input flags - Turn off input processing
-  term.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
-      INLCR | PARMRK | INPCK | ISTRIP | IXON);
-
-  // Output flags - Turn off output processing
-  term.c_oflag = 0;
-
-  // No line processing:
-  term.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
-
-  // Turn off character processing
-  term.c_cflag &= ~(CSIZE | PARENB);
-  term.c_cflag |= CS8;
-
-  // hlh: I tried turning the intercharacter timer back on (VMIN: 10,
-  // VTIME: 1), but the result was disastrously slow on OS X. I believe I
-  // tried this originally to eliminate timing issues in the detect framing
-  // routine.
-  term.c_cc[VMIN]  = 1;
-  term.c_cc[VTIME] = 0;
-
-  // Communication speed
-
-  if (-1 == cfsetispeed(&term, B57600 )) {
-    char errbuf[256];
-    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-    assert(!rc);
-    (void)rc;
-    fprintf(stderr, "ERROR: cfsetispeed(): %s\n", errbuf);
-    return -1;
-  }
-
-  if (-1 == cfsetospeed(&term, B57600)) {
-    char errbuf[256];
-    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-    assert(!rc);
-    (void)rc;
-    fprintf(stderr, "ERROR: cfsetospeed(): %s\n", errbuf);
-    return -1;
-  }
-
-  if (-1 == tcsetattr(comms->socket, TCSANOW, &term)) {
-    char errbuf[256];
-    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-    assert(!rc);
-    (void)rc;
-    fprintf(stderr, "ERROR: Configuring %s: %s.\n", ttyfilename, errbuf);
-    return -1;
-  }
-
-  /* hlh: For such a low speed (57.6k), we shouldn't have to do anything
-   * special to set it on Mac OS. The termios interface above should suffice.
-   * Thus the #if 0.
-   */
-#if 0
-  if (1) {
-#ifdef __MACH__
-    unsigned long baud = 57600;
-    if (-1 == ioctl(comms->socket, IOSSIOSPEED, &baud)) {
-      char errbuf[256];
-      strerror_r(errno, errbuf, sizeof(errbuf));
-      fprintf(stderr, "ERROR: , "
-          "ioctl(..., IOSSIOSPEED, ...): %s\n", errbuf);
-      return -1;
-    }
-#else
-    fprintf(stderr, "ERROR: in dongleOpen, could not convert baud "
-        "%ld to POSIX speed\n", baud);
-    return -1;
-#endif
-  }
-  else {
-#endif
-    /* If we used the POSIX method of setting the baud rate, we can check to
-     * make sure it got set. */
-    if (-1 == tcgetattr(comms->socket, &term)) {
-      char errbuf[256];
-      auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-      assert(!rc);
-      (void)rc;
-      fprintf(stderr, "(barobo) ERROR: in dongleOpen, tcgetattr(): %s\n", errbuf);
-      return -1;
-    }
-
-    if (cfgetispeed(&term) != B57600) {
-      fprintf(stderr, "(barobo) ERROR: Unable to set %s input speed.\n", ttyfilename);
-      return -1;
-    }
-
-    if (cfgetospeed(&term) != B57600) {
-      fprintf(stderr, "(barobo) ERROR: Unable to set %s output speed.\n", ttyfilename);
-      return -1;
-    }
-#if 0
-  }
-#endif
-
-#ifdef __MACH__
-  write(comms->socket, NULL, 0);
-#endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-  if (-1 == tcflush(comms->socket, TCIOFLUSH)) {
-    char errbuf[256];
-    auto rc = strerror_r(errno, errbuf, sizeof(errbuf));
-    assert(!rc);
-    (void)rc;
-    fprintf(stderr, "(barobo) ERROR: in dongleOpen, tcflush(): %s\n", errbuf);
+  catch (boost::system::system_error& e) {
+    BOOST_LOG(lg) << "Error opening " << ttyfilename << ": " << e.what();
     return -1;
   }
 
@@ -296,31 +116,12 @@ int stkComms_connectWithTTY(stkComms_t* comms, const char* ttyfilename)
   comms->connectionType = CONNECT_TTY;
   return 0;
 }
-#endif
 
 int stkComms_disconnect(stkComms_t* comms)
 {
-#ifndef _WIN32
-  return close(comms->socket);
-#else
-  CloseHandle(comms->commHandle);
-  return 0;
-#endif
-}
-
-int stkComms_setSocket(stkComms_t* comms, int socket)
-{
-  comms->socket = socket;
-  /* Make the socket non-blocking */
-#ifndef _WIN32
-  int flags = fcntl(comms->socket, F_GETFL, 0);
-  fcntl(comms->socket, F_SETFL, flags | O_NONBLOCK);
-#else
-  ioctlsocket(comms->socket, FIONBIO, (u_long*)1);
-#endif
-  comms->isConnected = 1;
-
-  return 0;
+  auto ec = boost::system::error_code{};
+  comms->serialPort.close(ec);
+  return ec ? -1 : 0;
 }
 
 double stkComms_getProgress(stkComms_t* comms)
@@ -381,15 +182,7 @@ int stkComms_handshake(stkComms_t* comms)
 #else
     Sleep(1000);
 #endif
-#ifndef _WIN32
-    len = stkComms_recvBytes2(comms, buf, 10);
-#else
-    if(comms->connectionType == CONNECT_SOCKET) {
-      len = stkComms_recvBytes2(comms, buf, 10);
-    } else {
-      len = stkComms_recvBytes(comms, buf, 2, 10);
-    }
-#endif
+    len = comms->serialPort.read_some(asio::buffer(buf));
     if(len == 2) {break;}
   }
   if(len == 2 && buf[0] == Resp_STK_INSYNC )
@@ -448,7 +241,7 @@ int stkComms_setDevice(
   if((rc = stkComms_sendBytes(comms, buf, 22))) {
     THROW;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, 25);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     THROW;
   }
@@ -482,7 +275,7 @@ int stkComms_setDeviceExt(
     THROW;
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     THROW;
     return -1;
@@ -507,7 +300,7 @@ int stkComms_enterProgMode(stkComms_t* comms)
   if((rc = stkComms_sendBytes(comms, buf, 2))) {
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     return -1;
   }
@@ -529,7 +322,7 @@ int stkComms_leaveProgMode(stkComms_t* comms)
   if((rc = stkComms_sendBytes(comms, buf, 2))) {
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     return -1;
   }
@@ -552,7 +345,7 @@ int stkComms_checkSignature(stkComms_t* comms)
   if((rc = stkComms_sendBytes(comms, buf, 2))) {
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 5, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 5));
   if(rc != 5) {
     return -1;
   }
@@ -598,7 +391,7 @@ int stkComms_loadAddress(stkComms_t* comms, uint16_t address)
   {
     return -1;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, 4);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2)
   {
     THROW;
@@ -733,7 +526,7 @@ int stkComms_checkPage(stkComms_t* comms, hexFile_t* hexfile, uint16_t address, 
   buf[4] = Sync_CRC_EOP;
   stkComms_sendBytes(comms, buf, 5);
   /* Now, get the data */
-  rc = stkComms_recvBytes(comms, buf, size+2, size+10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, size));
   if(rc != size+2) {
     printf("received %d bytes, but expected %d!\n", rc, size+2);
     THROW;
@@ -767,7 +560,7 @@ int stkComms_progPage(stkComms_t* comms, uint8_t* data, uint16_t size)
   if((rc = stkComms_sendBytes(comms, buf, size+5))) {
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, size);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     return -1;
   }
@@ -793,7 +586,7 @@ int stkComms_progPageEeprom(stkComms_t* comms, uint8_t* data, uint16_t size)
   if((rc = stkComms_sendBytes(comms, buf, size+5))) {
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, size);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     return -1;
   }
@@ -829,7 +622,7 @@ int stkComms_readData(stkComms_t* comms, uint16_t address, uint8_t *byte)
     THROW;
     return -1;
   }
-  rc = stkComms_recvBytes(comms, buf, 3, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 3));
   if(rc != 3) {
     THROW;
     return -1;
@@ -853,7 +646,7 @@ int stkComms_writeData(stkComms_t* comms, uint16_t address, uint8_t byte)
     THROW;
     return -1;
   }
-  rc = stkComms_recvBytes(comms, buf, 2, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 2));
   if(rc != 2) {
     THROW;
     return -1;
@@ -874,7 +667,7 @@ int stkComms_universal(stkComms_t* comms, uint8_t byte1, uint8_t byte2, uint8_t 
   if((rc = stkComms_sendBytes(comms, buf, 6))) {
     return rc;
   }
-  rc = stkComms_recvBytes(comms, buf, 3, 10);
+  rc = asio::read(comms->serialPort, asio::buffer(buf, 3));
   if(rc != 3) {
     THROW;
     return rc;
@@ -895,117 +688,46 @@ int stkComms_sendBytes(stkComms_t* comms, void* buf, size_t len)
   }
   fprintf(stderr, "\n");
 #endif
-#ifndef _WIN32
-  if(write(comms->socket, buf, len) == -1) {
-    perror("Write error");
-    return -1;
-  } 
-#else
-  if(comms->connectionType == CONNECT_SOCKET) {
-    if(send(comms->socket, (const char*)buf, len, 0) == -1) {
-      perror("Write error");
-      return -1;
-    } 
-  } else {
-    WriteFile( comms->commHandle,
-        (LPCVOID)buf,
-        len,
-        NULL,
-        &comms->ov);
-    DWORD bytes;
-    GetOverlappedResult( comms->commHandle,
-        &comms->ov,
-        &bytes,
-        TRUE);
+  try {
+    asio::write(comms->serialPort, asio::buffer(buf, len));
   }
-#endif
+  catch (boost::system::system_error& e) {
+    boost::log::sources::logger lg;
+    BOOST_LOG(lg) << "Write error: " << e.what();
+    return -1;
+  }
   return 0;
 }
 
-int stkComms_recvBytes(stkComms_t* comms, uint8_t* buf, size_t expectedBytes, size_t size)
+#if 0
+int stkComms_recvBytes(stkComms_t* comms, uint8_t* buf, size_t expectedBytes)
 {
   size_t len = 0;
-  int rc;
-  uint8_t *mybuf = (uint8_t*)malloc(size*sizeof(uint8_t));
 
 #ifdef VERBOSE
   fprintf(stderr, "Trying to receive bytes...\n");
 #endif
-  
-  while(len < expectedBytes) {
-#ifndef _WIN32
-    rc = read(comms->socket, mybuf, size);
-#else
-    if(comms->connectionType == CONNECT_SOCKET) {
-      rc = recvfrom(comms->socket, (char*)mybuf, size, 0, (struct sockaddr*)0, 0);
-    } else {
-#ifdef VERBOSE
-      fprintf(stderr, "Reading from commhandle: 0x%X -> 0x%X\n", 
-          &comms->commHandle,
-          comms->commHandle);
-#endif
-      SetLastError(0);
-      auto success = ReadFile(
-          comms->commHandle,
-          (LPVOID)mybuf,
-          expectedBytes,
-          NULL,
-          &comms->ov);
-#ifdef VERBOSE
-      if(!success) {
-        fprintf(stderr, "ReadFile Error: %d\n", GetLastError());
-      }
-#endif
-      DWORD bytes;
-      SetLastError(0);
-      rc = GetOverlappedResult( comms->commHandle,
-          &comms->ov,
-          &bytes,
-          TRUE);
-#ifdef VERBOSE
-      fprintf(stderr, "Received overlapped result. %d:%d\n", rc, bytes);
-      if(rc == 0) {
-        fprintf(stderr, "Error: %d\n", GetLastError());
-      }
-#endif
-      if(rc) rc = bytes;
-      else rc = -1;
-    }
-#endif
-    if(rc > 0) {
-      memcpy(&buf[len], mybuf, rc);
-      len += rc;
-      if(buf[0] != Resp_STK_INSYNC) {
-        THROW;
-      }
-    }
-    //usleep(100000);
+
+  try {
+    // The completion-condition lambda argument passed to asio::read() here is
+    // only necessary because of the Resp_STK_INSYNC check, otherwise it could be
+    // omitted.
+    len = asio::read(comms->serialPort, asio::buffer(buf, expectedBytes),
+      [&] (boost::system::error_code ec, size_t nRead) {
+        if (ec) { return 0; }
+        if (nRead && buf[0] != Resp_STK_INSYNC) {
+          THROW;
+        }
+        return asio::transfer_exactly(expectedBytes)(ec, nRead);
+      });
+  }
+  catch (boost::system::system_error& e) {
+    return -1;
   }
 #ifdef VERBOSE
   printf("Recv: ");
   for(int i = 0; i < len; i++) {
     printf("0x%02X ", ((uint8_t*)buf)[i]);
-  }
-  printf("\n");
-#endif
-  free (mybuf);
-  return len;
-}
-
-int stkComms_recvBytes2(stkComms_t* comms, uint8_t* buf, size_t size)
-{
-  int len = 0;
-  
-#ifndef _WIN32
-  len = read(comms->socket, buf, size);
-#else
-  len = recvfrom(comms->socket, (char*)buf, size, 0, (struct sockaddr*)0, 0);
-#endif
-
-#ifdef DEBUG
-  printf("Recv: ");
-  for(int i = 0; i < len; i++) {
-    printf("0x%2X ", ((uint8_t*)buf)[i]);
   }
   printf("\n");
 #endif
@@ -1024,6 +746,7 @@ int stkComms_setdtr (stkComms_t* comms, int on)
   return 0;
 #endif
 } 
+#endif
 
 hexFile_t* hexFile_new()
 {
