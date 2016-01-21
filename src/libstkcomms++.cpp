@@ -31,7 +31,7 @@
 #endif
 #include "libstkcomms.hpp"
 #include "libstkcomms.h"
-#include "command.h"
+#include "libstkcomms/command.h"
 #include "thread_macros.h"
 
 //#define DEBUG

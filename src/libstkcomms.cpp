@@ -39,7 +39,7 @@
 #include <winsock2.h>
 #endif
 #include "libstkcomms.hpp"
-#include "command.h"
+#include "libstkcomms/command.h"
 #include "thread_macros.h"
 #ifdef __MACH__
 #include <sys/ioctl.h>

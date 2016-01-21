@@ -18,7 +18,7 @@
 #ifndef _LIBSTKCOMMS_H_
 #define _LIBSTKCOMMS_H_
 
-#include "baromesh/iocore.hpp"
+#include <util/iothread.hpp>
 
 #include <boost/asio/serial_port.hpp>
 
@@ -61,10 +61,10 @@ typedef void (*stkComms_completionCallbackFunc) (int status, void* user_data);
 #include "thread_macros.h"
 typedef struct stkComms_s
 {
-  stkComms_s () : ioCore(baromesh::IoCore::get()), serialPort(ioCore->ios()) {}
+  stkComms_s () : io(util::IoThread::getGlobal()), serialPort(io->context()) {}
   ~stkComms_s () = default;
 
-  std::shared_ptr<baromesh::IoCore> ioCore;
+  std::shared_ptr<util::IoThread> io;
   boost::asio::serial_port serialPort;
   int isConnected;
   int programComplete;
