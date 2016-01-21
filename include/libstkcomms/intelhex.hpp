@@ -6,7 +6,7 @@
 #include <boost/spirit/include/phoenix_stl.hpp>
 #include <boost/spirit/include/qi.hpp>
 
-#include <boost/fusion/adapted.hpp> // for at_c to work with std::pair
+#include <boost/fusion/adapted.hpp>
 
 namespace stk {
 namespace intelhex {
@@ -65,7 +65,8 @@ struct Grammar : qi::grammar<Iter, qi::locals<Address>, std::list<DataRecord>()>
         // with an epsilon (empty) parser so we can initialize _a, the base
         // address.
         start = qi::eps[(_a = 0) || true]
-            >> *(data(_a)[push_back(_val, _1)] | extendedSegmentAddress[_a = _1])
+            >> *(data(_a)[push_back(_val, _1)]
+                | extendedSegmentAddress[_a = _1])
             >> end;
 
         // Every record begins with a : and ends with a CRLF.
