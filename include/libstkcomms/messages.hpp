@@ -3,7 +3,12 @@
 
 #include <libstkcomms/command.h>
 
+#include <boost/asio/buffer.hpp>
+
+#include <boost/endian/arithmetic.hpp>
 #include <boost/regex.hpp>
+
+#include <array>
 
 #include <cstdint>
 
@@ -54,14 +59,31 @@ const uint8_t kLeaveProgmodeMessage [] = { Cmnd_STK_LEAVE_PROGMODE, Sync_CRC_EOP
 const uint8_t kReadSignMessage [] = { Cmnd_STK_READ_SIGN, Sync_CRC_EOP };
 const boost::regex kReadSignReply {"\x14(.{3})\x10"};
 
-#if 0
-/////////
-const uint8_t kLoadAddressMessage [] = { buf[0] = Cmnd_STK_LOAD_ADDRESS;
-  buf[1] = (address&0xFF);
-  buf[2] = address>>8;
-  buf[3] = Sync_CRC_EOP;
+const uint8_t kFlashType [] = { 'F' };
+const uint8_t kEepromType [] = { 'E' };
+
+const uint8_t kLoadAddressPrefix [] = { Cmnd_STK_LOAD_ADDRESS };
+const uint8_t kCrcEop [] = { Sync_CRC_EOP };
+
+inline std::array<boost::asio::const_buffer, 3>
+loadAddressMessage (boost::asio::const_buffer address) {
+    return {
+        boost::asio::buffer(kLoadAddressPrefix),
+        address,
+        boost::asio::buffer(kCrcEop)
+    };
 }
-#endif
+
+const uint8_t kProgPagePrefix [] = { Cmnd_STK_PROG_PAGE };
+
+inline std::array<boost::asio::const_buffer, 5>
+progPageMessage (boost::asio::const_buffer size, boost::asio::const_buffer type, boost::asio::const_buffer data) {
+    return {
+        boost::asio::buffer(kProgPagePrefix),
+        size, type, data,
+        boost::asio::buffer(kCrcEop)
+    };
+}
 
 } // <anonymous>
 } // stk

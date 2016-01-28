@@ -7,7 +7,8 @@ enum class Status {
     OK,
     TIMEOUT,
     PROTOCOL_ERROR,
-    UNKNOWN_SIGNATURE
+    UNKNOWN_SIGNATURE,
+    BLOB_TOO_BIG
 };
 
 } // namespace stk

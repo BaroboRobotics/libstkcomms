@@ -13,6 +13,7 @@ std::string ErrorCategory::message (int ev) const BOOST_NOEXCEPT {
         ITEM(TIMEOUT)
         ITEM(PROTOCOL_ERROR)
         ITEM(UNKNOWN_SIGNATURE)
+        ITEM(BLOB_TOO_BIG)
 #undef ITEM
         default: return "(unknown status)";
     }
