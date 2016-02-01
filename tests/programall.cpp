@@ -47,7 +47,7 @@ int main (int argc, char** argv) try {
     auto sp = asio::serial_port{io.context()};
     BOOST_LOG(lg) << "Waiting for USB CDC device";
     while (!sp.is_open()) {
-        for (auto d : usbcdc::devices()) {
+        for (auto&& d : usbcdc::devices()) {
             BOOST_LOG(lg) << "Opening " << d.productString() << " at " << d.path();
             try {
                 sp.open(d.path());
