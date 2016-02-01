@@ -4,6 +4,7 @@
 
 #include <util/blob.hpp>
 #include <util/iothread.hpp>
+#include <util/readfile.hpp>
 #include <util/setserialportoptions.hpp>
 
 #include <boost/filesystem.hpp>
@@ -32,20 +33,12 @@ int main (int argc, char** argv) try {
     }
 
     BOOST_LOG(lg) << "Loading flash blob";
-    auto ss = std::stringstream{};
-    fs::ifstream flashFile{flashName};
-    ss << flashFile.rdbuf();
-    auto flashString = ss.str();
-    auto flash = util::makeBlobFromIntelHex(flashString.data(), flashString.data() + flashString.size());
+    auto flash = util::makeBlobFromIntelHex(util::readFile(flashName));
     BOOST_LOG(lg) << "Flash is " << flash.code().size()
         << " bytes starting at address " << flash.address();
 
     BOOST_LOG(lg) << "Loading EEPROM blob";
-    ss = std::stringstream{};
-    fs::ifstream eepromFile{eepromName};
-    ss << eepromFile.rdbuf();
-    auto eepromString = ss.str();
-    auto eeprom = util::makeBlobFromIntelHex(eepromString.data(), eepromString.data() + eepromString.size());
+    auto eeprom = util::makeBlobFromIntelHex(util::readFile(eepromName));
     BOOST_LOG(lg) << "EEPROM is " << eeprom.code().size()
         << " bytes starting at address " << eeprom.address();
 
@@ -66,12 +59,23 @@ int main (int argc, char** argv) try {
                 BOOST_LOG(lg) << "Failed: " << e.what();
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!sp.is_open()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    auto progressBytes = size_t(0);
+    auto totalBytes = size_t(flash.code().size() + eeprom.code().size());
+    auto progress = [lg, &progressBytes, totalBytes](uint16_t n) mutable {
+        progressBytes += n;
+        BOOST_LOG(lg) << "Progress: " << double(progressBytes) / double(totalBytes);
+    };
+
     BOOST_LOG(lg) << "Programming";
-    stk::asyncProgramAll(sp, flash.address(), asio::buffer(flash.code()),
+    stk::asyncProgramAll(sp,
+        flash.address(), asio::buffer(flash.code()),
+        progress,
         eeprom.address(), asio::buffer(eeprom.code()),
+        progress,
         [=] (stk::error_code ec) mutable
     {
         BOOST_LOG(lg) << "Programming complete: " << ec.message();
