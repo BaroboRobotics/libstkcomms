@@ -41,6 +41,8 @@ namespace {
     using util::composed::Operation;
 
     using std::move;
+    using namespace std::placeholders;
+
     using boost::regex;
     using boost::system::error_code;
     using boost::endian::little_uint16_t;
@@ -75,8 +77,8 @@ std::string toHexString (Iter b, Iter e) {
 
 namespace operations {
 
-Status handleSyncReply (size_t n, asio::streambuf& buf,
-    const boost::match_results<StreamBufIter>& what)
+bool handleSyncReply (size_t n, asio::streambuf& buf,
+    const boost::match_results<StreamBufIter>& what, error_code& ec)
 {
     auto b = StreamBufIter::begin(buf.data());
     auto e = StreamBufIter::end(buf.data());
@@ -85,13 +87,14 @@ Status handleSyncReply (size_t n, asio::streambuf& buf,
 
     if (what[0].matched) {
         buf.consume(n);
-        return Status::OK;
+        return true;
     }
-    return Status::PROTOCOL_ERROR;
+    ec = Status::PROTOCOL_ERROR;
+    return false;
 }
 
-Status handleReadSignReply (size_t n, asio::streambuf& buf,
-    const boost::match_results<StreamBufIter>& what, uint16_t& pageSize)
+bool handleReadSignReply (size_t n, asio::streambuf& buf,
+    const boost::match_results<StreamBufIter>& what, uint16_t& pageSize, error_code& ec)
 {
     auto b = StreamBufIter::begin(buf.data());
     auto e = StreamBufIter::end(buf.data());
@@ -110,12 +113,14 @@ Status handleReadSignReply (size_t n, asio::streambuf& buf,
         }
         else {
             auto sigHexdump = detail::toHexString(sigMatch.first, sigMatch.second);
-            return Status::UNKNOWN_SIGNATURE;
+            ec = Status::UNKNOWN_SIGNATURE;
+            return false;
         }
         buf.consume(n);
-        return Status::OK;
+        return true;
     }
-    return Status::PROTOCOL_ERROR;
+    ec = Status::PROTOCOL_ERROR;
+    return false;
 }
 
 detail::FullRegexMatch<StreamBufIter>
@@ -155,7 +160,7 @@ struct ProgramPages {
     Progress progress_;
 
     boost::log::sources::logger log_;
-    error_code rc_;
+    error_code rc_ = asio::error::operation_aborted;
 
     std::tuple<error_code> result () {
         return std::make_tuple(rc_);
@@ -167,7 +172,7 @@ struct ProgramPages {
             while (asio::buffer_size(code_)) {
                 yield async_write(sp_, loadAddressMessage(buffer(txAddress_.data(), 2)), move(op));
                 yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-                if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+                if (!handleSyncReply(n, buf_, what_, rc_)) return;
 
                 if (asio::buffer_size(code_) < pageSize_) {
                     pageSize_ = static_cast<uint16_t>(asio::buffer_size(code_));
@@ -180,7 +185,7 @@ struct ProgramPages {
                     async_write(sp_, message, move(op));
                 }
                 yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-                if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+                if (!handleSyncReply(n, buf_, what_, rc_)) return;
 
                 code_ = code_ + pageSize_;
                 txAddress_ += pageSize_ / 2;
@@ -189,6 +194,7 @@ struct ProgramPages {
                 progress_(pageSize_);
             }
             // TODO read back pages to verify?
+            rc_ = Status::OK;
         }
         else if (asio::error::operation_aborted != ec) {
             BOOST_LOG(log_) << "ProgramPages I/O error: " << ec.message();
@@ -200,11 +206,12 @@ struct ProgramPages {
 
 template <class FlashProgress, class EepromProgress>
 struct ProgramAll {
-    ProgramAll (asio::serial_port& sp,
+    ProgramAll (asio::serial_port& sp, const std::string& path, asio::steady_timer& timer,
         uint32_t flashBase, const_buffer flash, FlashProgress&& flashProgress,
         uint32_t eepromBase, const_buffer eeprom, EepromProgress&& eepromProgress)
         : sp_(sp)
-        , timer_(sp.get_io_service())
+        , path_(path)
+        , timer_(timer)
         , flashBase_(flashBase)
         , flash_(flash)
         , flashProgress_(std::forward<FlashProgress>(flashProgress))
@@ -214,10 +221,11 @@ struct ProgramAll {
     {}
 
     asio::serial_port& sp_;
+    std::string path_;
     asio::streambuf buf_;
     boost::match_results<StreamBufIter> what_;
 
-    asio::steady_timer timer_;
+    asio::steady_timer& timer_;
     int syncAttempts_ = 0;
 
     uint32_t flashBase_;
@@ -231,7 +239,7 @@ struct ProgramAll {
     uint16_t pageSize_ = 0;
 
     boost::log::sources::logger log_;
-    error_code rc_;
+    error_code rc_ = asio::error::operation_aborted;
 
     std::tuple<error_code> result () {
         return std::make_tuple(rc_);
@@ -246,6 +254,20 @@ struct ProgramAll {
                 return;
             }
 
+            sp_.open(path_, ec);
+            if (ec) {
+                rc_ = ec;
+                return;
+            }
+
+            timer_.expires_from_now(util::kSerialSettleTimeAfterOpen);
+            yield timer_.async_wait(move(op));
+            util::setSerialPortOptions(sp_, 57600, ec);
+            if (ec) {
+                rc_ = ec;
+                return;
+            }
+
             // Spawn a child to bang the serial port with sync messages.
             // We can kill it later with:
             //   timer_.expires_at(decltype(timer_)::time_point::min())
@@ -257,7 +279,7 @@ struct ProgramAll {
                 while (++syncAttempts_ <= kSyncMaxAttempts) {
                     BOOST_LOG(log_) << "Writing sync message (" << syncAttempts_ << "/" << kSyncMaxAttempts << ")";
                     yield async_write(sp_, buffer(kSyncMessage), move(op));
-                    if (timer_.expires_at() == decltype(timer_)::time_point::min()) {
+                    if (timer_.expires_at() == asio::steady_timer::time_point::min()) {
                         BOOST_LOG(log_) << "Sync spammer cancelled mid-write";
                         return;
                     }
@@ -274,29 +296,29 @@ struct ProgramAll {
             BOOST_LOG(log_) << "Reading sync reply";
             yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
             // Kill the child we forked
-            timer_.expires_at(decltype(timer_)::time_point::min());
-            if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+            timer_.expires_at(asio::steady_timer::time_point::min());
+            if (!handleSyncReply(n, buf_, what_, rc_)) return;
             BOOST_LOG(log_) << "Handshake success";
 
             BOOST_LOG(log_) << "Setting device parameters";
             yield async_write(sp_, buffer(kSetDeviceMessage), move(op));
             yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-            if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+            if (!handleSyncReply(n, buf_, what_, rc_)) return;
 
             BOOST_LOG(log_) << "Setting extended device parameters";
             yield async_write(sp_, buffer(kSetDeviceExtMessage), move(op));
             yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-            if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+            if (!handleSyncReply(n, buf_, what_, rc_)) return;
 
             BOOST_LOG(log_) << "Entering programming mode";
             yield async_write(sp_, buffer(kEnterProgmodeMessage), move(op));
             yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-            if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+            if (!handleSyncReply(n, buf_, what_, rc_)) return;
 
             BOOST_LOG(log_) << "Reading signature";
             yield async_write(sp_, buffer(kReadSignMessage), move(op));
             yield async_read_until(sp_, buf_, weReceive(what_, kReadSignReply), move(op));
-            if ((rc_ = handleReadSignReply(n, buf_, what_, pageSize_))) return;
+            if (!handleReadSignReply(n, buf_, what_, pageSize_, rc_)) return;
             BOOST_LOG(log_) << "Page size " << pageSize_ << " detected";
 
             BOOST_LOG(log_) << "Programming flash";
@@ -322,13 +344,13 @@ struct ProgramAll {
             BOOST_LOG(log_) << "Leaving programming mode";
             yield async_write(sp_, buffer(kLeaveProgmodeMessage), move(op));
             yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-            if ((rc_ = handleSyncReply(n, buf_, what_))) return;
+            if (!handleSyncReply(n, buf_, what_, rc_)) return;
 
-            BOOST_LOG(log_) << "Programming successful";
+            rc_ = Status::OK;
         }
         else if (asio::error::operation_aborted != ec) {
             BOOST_LOG(log_) << "ProgramAll I/O error: " << ec.message();
-            timer_.expires_at(decltype(timer_)::time_point::min());
+            timer_.expires_at(asio::steady_timer::time_point::min());
             sp_.close();
             rc_ = ec;
         }
@@ -348,7 +370,9 @@ private:
 
 template <class FlashProgress, class EepromProgress, class Handler>
 BOOST_ASIO_INITFN_RESULT_TYPE(Handler, void(error_code))
-asyncProgramAll (asio::serial_port& sp,
+asyncProgramAllImpl (asio::serial_port& sp,
+    const std::string& path,
+    asio::steady_timer& timer,
     uint32_t flashBase,
     const_buffer flash,
     FlashProgress&& flashProgress,
@@ -362,7 +386,7 @@ asyncProgramAll (asio::serial_port& sp,
     > init { std::forward<Handler>(handler) };
 
     using ProgramAll = operations::ProgramAll<FlashProgress, EepromProgress>;
-    makeOperation<ProgramAll>(move(init.handler), sp,
+    makeOperation<ProgramAll>(move(init.handler), sp, path, timer,
         flashBase, flash, std::forward<FlashProgress>(flashProgress),
         eepromBase, eeprom, std::forward<EepromProgress>(eepromProgress))();
 

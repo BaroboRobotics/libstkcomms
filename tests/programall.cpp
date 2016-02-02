@@ -1,4 +1,4 @@
-#include <libstkcomms/asyncstk.hpp>
+#include <libstkcomms/programmer.hpp>
 
 #include <usbcdc/devices.hpp>
 
@@ -6,6 +6,9 @@
 #include <util/iothread.hpp>
 #include <util/readfile.hpp>
 #include <util/setserialportoptions.hpp>
+
+#include <boost/asio/signal_set.hpp>
+#include <boost/asio/use_future.hpp>
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -44,42 +47,45 @@ int main (int argc, char** argv) try {
 
     util::IoThread io;
 
-    auto sp = asio::serial_port{io.context()};
     BOOST_LOG(lg) << "Waiting for USB CDC device";
-    while (!sp.is_open()) {
+    auto done = false;
+    while (!done) {
         for (auto&& d : usbcdc::devices()) {
             BOOST_LOG(lg) << "Opening " << d.productString() << " at " << d.path();
+            auto progressBytes = size_t(0);
+            auto totalBytes = size_t(flash.code().size() + eeprom.code().size());
+            auto progress = [lg, &progressBytes, totalBytes](uint16_t n) mutable {
+                progressBytes += n;
+                BOOST_LOG(lg) << "Progress: " << double(progressBytes) / double(totalBytes);
+            };
+
+            auto programmer = stk::Programmer{io.context()};
+            auto sigSet = asio::signal_set{io.context(), SIGTERM, SIGINT};
+            sigSet.async_wait([&done, &programmer, lg](stk::error_code ec, int sigNo) mutable {
+                if (!ec) {
+                    programmer.close(ec);
+                    done = true;
+                    BOOST_LOG(lg) << "Signal number: " << sigNo
+                        << ", closing programmer resulted in " << ec.message();
+                }
+            });
             try {
-                sp.open(d.path());
-                std::this_thread::sleep_for(util::kSerialSettleTimeAfterOpen);
-                util::setSerialPortOptions(sp, 57600);
-                break;
+                programmer.asyncProgramAll(d.path(),
+                    flash.address(), asio::buffer(flash.code()),
+                    progress,
+                    eeprom.address(), asio::buffer(eeprom.code()),
+                    progress,
+                    asio::use_future).get();
+                BOOST_LOG(lg) << "Programming successful";
+                done = true;
             }
             catch (std::exception& e) {
                 BOOST_LOG(lg) << "Failed: " << e.what();
             }
+            sigSet.cancel();
         }
-        if (!sp.is_open()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    auto progressBytes = size_t(0);
-    auto totalBytes = size_t(flash.code().size() + eeprom.code().size());
-    auto progress = [lg, &progressBytes, totalBytes](uint16_t n) mutable {
-        progressBytes += n;
-        BOOST_LOG(lg) << "Progress: " << double(progressBytes) / double(totalBytes);
-    };
-
-    BOOST_LOG(lg) << "Programming";
-    stk::asyncProgramAll(sp,
-        flash.address(), asio::buffer(flash.code()),
-        progress,
-        eeprom.address(), asio::buffer(eeprom.code()),
-        progress,
-        [=] (stk::error_code ec) mutable
-    {
-        BOOST_LOG(lg) << "Programming complete: " << ec.message();
-    });
 
     BOOST_LOG(lg) << "IO thread ran " << io.join() << " handlers";
 }
