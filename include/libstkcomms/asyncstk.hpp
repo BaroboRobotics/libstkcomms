@@ -247,12 +247,20 @@ struct ProgramAll {
             }
 
             // Spawn a child to bang the serial port with sync messages.
-            // We can kill it later with timer_.cancel().
+            // We can kill it later with:
+            //   timer_.expires_at(decltype(timer_)::time_point::min())
+            // Simply calling timer_.cancel() wouldn't do the trick without a
+            // separate boolean flag in case this coroutine child were
+            // suspended on the async_write() call.
             fork Op{op}();
             if (op.is_child()) {
                 while (++syncAttempts_ <= kSyncMaxAttempts) {
                     BOOST_LOG(log_) << "Writing sync message (" << syncAttempts_ << "/" << kSyncMaxAttempts << ")";
                     yield async_write(sp_, buffer(kSyncMessage), move(op));
+                    if (timer_.expires_at() == decltype(timer_)::time_point::min()) {
+                        BOOST_LOG(log_) << "Sync spammer cancelled mid-write";
+                        return;
+                    }
                     timer_.expires_from_now(kSyncTimeout);
                     yield timer_.async_wait(move(op));
                 }
@@ -266,7 +274,7 @@ struct ProgramAll {
             BOOST_LOG(log_) << "Reading sync reply";
             yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
             // Kill the child we forked
-            timer_.cancel();
+            timer_.expires_at(decltype(timer_)::time_point::min());
             if ((rc_ = handleSyncReply(n, buf_, what_))) return;
             BOOST_LOG(log_) << "Handshake success";
 
@@ -320,7 +328,7 @@ struct ProgramAll {
         }
         else if (asio::error::operation_aborted != ec) {
             BOOST_LOG(log_) << "ProgramAll I/O error: " << ec.message();
-            timer_.cancel();
+            timer_.expires_at(decltype(timer_)::time_point::min());
             sp_.close();
             rc_ = ec;
         }
