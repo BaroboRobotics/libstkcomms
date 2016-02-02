@@ -16,8 +16,6 @@ find_package(Boost 1.59.0 REQUIRED COMPONENTS system filesystem log log_setup th
 # Targets and properties
 
 add_library(stkcomms STATIC
-    src/libstkcomms.cpp
-    src/libstkcomms++.cpp
     src/system_error.cpp)
 
 set_target_properties(stkcomms PROPERTIES
@@ -27,24 +25,9 @@ set_target_properties(stkcomms PROPERTIES
     CXX_STANDARD 11
     CXX_STANDARD_REQUIRED ON
 )
-target_compile_definitions(stkcomms
-    PRIVATE "-DBUILD_CSTKCOMMS"
-)
 
 target_include_directories(stkcomms PUBLIC include ${Boost_INCLUDE_DIRS})
 target_link_libraries(stkcomms PUBLIC baromesh-common cxx-util ${Boost_LIBRARIES})
-
-if(WIN32)
-    target_compile_definitions(stkcomms
-      PUBLIC _WIN32_WINNT=0x0501 WIN32_LEAN_AND_MEAN
-    )
-    target_compile_options(stkcomms PRIVATE /wd4100 # these two warnings are only because of VERBOSE macro
-                                             /wd4189
-                                             )
-    target_link_libraries(stkcomms PUBLIC ws2_32)
-else()
-    target_link_libraries(stkcomms PUBLIC pthread)
-endif()
 
 # Staging
 
