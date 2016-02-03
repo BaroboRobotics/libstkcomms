@@ -151,6 +151,9 @@ public:
     BasicProgrammer (const BasicProgrammer&) = delete;
     BasicProgrammer& operator= (const BasicProgrammer&) = delete;
 
+    BasicProgrammer (BasicProgrammer&&) = default;
+    BasicProgrammer& operator= (BasicProgrammer&&) = default;
+
     void close () {
         error_code ec;
         close(ec);

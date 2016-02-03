@@ -60,7 +60,7 @@ int main (int argc, char** argv) try {
             };
 
             auto programmer = stk::Programmer{io.context()};
-            auto sigSet = asio::signal_set{io.context(), SIGTERM, SIGINT};
+            asio::signal_set sigSet{io.context(), SIGTERM, SIGINT};
             sigSet.async_wait([&done, &programmer, lg](stk::error_code ec, int sigNo) mutable {
                 if (!ec) {
                     programmer.close(ec);

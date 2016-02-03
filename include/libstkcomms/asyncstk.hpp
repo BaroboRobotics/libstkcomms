@@ -6,6 +6,7 @@
 #include <libstkcomms/system_error.hpp>
 
 #include <util/composed.hpp>
+#include <util/setserialportoptions.hpp>
 
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/buffer.hpp>
@@ -167,7 +168,7 @@ struct ProgramPages {
     }
 
     template <class Op>
-    void operator() (Op& op, error_code ec = {}, size_t n = 0) {
+    void operator() (Op&& op, error_code ec = {}, size_t n = 0) {
         if (!ec) reenter (op) {
             while (asio::buffer_size(code_)) {
                 yield async_write(sp_, loadAddressMessage(buffer(txAddress_.data(), 2)), move(op));
@@ -246,7 +247,7 @@ struct ProgramAll {
     }
 
     template <class Op>
-    void operator() (Op& op, error_code ec = {}, size_t n = 0) {
+    void operator() (Op&& op, error_code ec = {}, size_t n = 0) {
         if (!ec) reenter (op) {
             // Guarantee that the blobs we got passed will actually fit on a Linkbot
             if (blobTooBig()) {

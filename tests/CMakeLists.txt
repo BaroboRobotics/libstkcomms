@@ -1,4 +1,5 @@
 set_source_files_properties(programall.cpp PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
 add_executable(programall programall.cpp)
+set_target_properties(programall PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
 target_link_libraries(programall PRIVATE stkcomms)
 add_test(NAME programall COMMAND programall)
