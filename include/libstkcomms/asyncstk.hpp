@@ -77,8 +77,9 @@ std::string toHexString (Iter b, Iter e) {
 } // detail
 
 namespace operations {
+namespace {
 
-bool handleSyncReply (size_t n, asio::streambuf& buf,
+inline bool handleSyncReply (size_t n, asio::streambuf& buf,
     const boost::match_results<StreamBufIter>& what, error_code& ec)
 {
     auto b = StreamBufIter::begin(buf.data());
@@ -94,7 +95,7 @@ bool handleSyncReply (size_t n, asio::streambuf& buf,
     return false;
 }
 
-bool handleReadSignReply (size_t n, asio::streambuf& buf,
+inline bool handleReadSignReply (size_t n, asio::streambuf& buf,
     const boost::match_results<StreamBufIter>& what, uint16_t& pageSize, error_code& ec)
 {
     auto b = StreamBufIter::begin(buf.data());
@@ -124,10 +125,12 @@ bool handleReadSignReply (size_t n, asio::streambuf& buf,
     return false;
 }
 
-detail::FullRegexMatch<StreamBufIter>
+inline detail::FullRegexMatch<StreamBufIter>
 weReceive (boost::match_results<StreamBufIter>& what, regex re) {
     return detail::FullRegexMatch<StreamBufIter>{what, re};
 }
+
+} // <anonymous>
 
 // Upload a buffer of contiguous code to the device, starting at txAddress.
 // txAddress must be a 2-byte word address (i.e., byte address / 2). The code
