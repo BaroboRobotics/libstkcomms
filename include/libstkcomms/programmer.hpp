@@ -19,20 +19,12 @@ public:
         , mSerialPort(mContext)
     {}
 
-    ~ProgrammerImpl () {
-    }
-
-    void init () {
-    }
-
-    void destroy () {
-        error_code ec;
-        close(ec);
-    }
-
     void close (error_code& ec) {
-        mTimer.expires_at(decltype(mTimer)::time_point::min());
-        mSerialPort.close(ec);
+        auto self = this->shared_from_this();
+        mContext.post([self, this, ec]() mutable {
+            mTimer.expires_at(decltype(mTimer)::time_point::min());
+            mSerialPort.close(ec);
+        });
     }
 
     template <class FlashProgress, class EepromProgress, class CompletionToken>
@@ -102,16 +94,13 @@ public:
     }
 
     void destroy (implementation_type& impl) {
-        impl->destroy();
+        auto ec = error_code{};
+        close(impl, ec);
         impl.reset();
     }
 
     void close (implementation_type& impl, boost::system::error_code& ec) {
         impl->close(ec);
-    }
-
-    void init (implementation_type& impl) {
-        impl->init();
     }
 
 #if 0
@@ -144,15 +133,15 @@ class BasicProgrammer : public asio::basic_io_object<Service> {
 public:
     BasicProgrammer (asio::io_service& ios)
         : boost::asio::basic_io_object<Service>(ios)
-    {
-        this->get_service().init(this->get_implementation());
-    }
+    {}
 
     BasicProgrammer (const BasicProgrammer&) = delete;
     BasicProgrammer& operator= (const BasicProgrammer&) = delete;
 
+#if 0
     BasicProgrammer (BasicProgrammer&&) = default;
     BasicProgrammer& operator= (BasicProgrammer&&) = default;
+#endif
 
     void close () {
         error_code ec;
