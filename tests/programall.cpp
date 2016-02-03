@@ -59,7 +59,7 @@ int main (int argc, char** argv) try {
                 BOOST_LOG(lg) << "Progress: " << double(progressBytes) / double(totalBytes);
             };
 
-            auto programmer = stk::Programmer{io.context()};
+            stk::Programmer programmer{io.context()};
             asio::signal_set sigSet{io.context(), SIGTERM, SIGINT};
             sigSet.async_wait([&done, &programmer, lg](stk::error_code ec, int sigNo) mutable {
                 if (!ec) {
