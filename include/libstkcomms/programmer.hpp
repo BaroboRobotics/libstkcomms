@@ -131,7 +131,7 @@ boost::asio::io_service::id ProgrammerService<Impl>::id;
 template <class Service>
 class BasicProgrammer : public asio::basic_io_object<Service> {
 public:
-    BasicProgrammer (asio::io_service& ios)
+    explicit BasicProgrammer (asio::io_service& ios)
         : boost::asio::basic_io_object<Service>(ios)
     {}
 
@@ -155,34 +155,15 @@ public:
         this->get_service().close(this->get_implementation(), ec);
     }
 
-#if 1
-    template <class FlashProgress, class EepromProgress, class Handler>
-    BOOST_ASIO_INITFN_RESULT_TYPE(Handler, ProgramAllHandlerSignature)
-    asyncProgramAll (const std::string& path,
-        uint32_t flashBase,
-        const_buffer flash,
-        FlashProgress&& flashProgress,
-        uint32_t eepromBase,
-        const_buffer eeprom,
-        EepromProgress&& eepromProgress,
-        Handler&& handler)
-    {
-        return this->get_service().asyncProgramAll(this->get_implementation(),
-            path,
-            flashBase, flash, std::forward<FlashProgress>(flashProgress),
-            eepromBase, eeprom, std::forward<EepromProgress>(eepromProgress),
-            std::forward<Handler>(handler));
-    }
-#else
     template <class... Args>
     auto asyncProgramAll (Args&&... args) -> decltype(
-        this->get_service().asyncProgramAll(this->get_implementation(),
+        std::declval<BasicProgrammer>().get_service().asyncProgramAll(
+            std::declval<BasicProgrammer>().get_implementation(),
             std::forward<Args>(args)...))
     {
         return this->get_service().asyncProgramAll(this->get_implementation(),
             std::forward<Args>(args)...);
     }
-#endif
 };
 
 using Programmer = BasicProgrammer<ProgrammerService<ProgrammerImpl>>;
