@@ -56,7 +56,8 @@ namespace {
     using asio::async_write;
     using StreamBufIter = asio::buffers_iterator<asio::streambuf::const_buffers_type>;
 
-    const std::chrono::milliseconds kSyncTimeout { 200 };
+    const std::chrono::milliseconds kSyncRetryTimeout { 500 };
+    const std::chrono::seconds kSyncTimeout { 3 };
     const unsigned kSyncMaxAttempts { 10 };
     using UString = std::basic_string<uint8_t>;
     const UString kMobotILSignature { 0x1e, 0xa7, 0x01 };
@@ -278,6 +279,12 @@ struct ProgramAll {
             // Simply calling timer_.cancel() wouldn't do the trick without a
             // separate boolean flag in case this coroutine child were
             // suspended on the async_write() call.
+            if (timer_.expires_at() == asio::steady_timer::time_point::min()) {
+                BOOST_LOG(log_) << "Sync spammer cancelled mid-write";
+                return;
+            }
+            timer_.expires_from_now(kSyncTimeout);
+            yield timer_.async_wait(move(op));
             fork Op{op}();
             if (op.is_child()) {
                 while (++syncAttempts_ <= kSyncMaxAttempts) {
@@ -287,7 +294,7 @@ struct ProgramAll {
                         BOOST_LOG(log_) << "Sync spammer cancelled mid-write";
                         return;
                     }
-                    timer_.expires_from_now(kSyncTimeout);
+                    timer_.expires_from_now(kSyncRetryTimeout);
                     yield timer_.async_wait(move(op));
                 }
                 BOOST_LOG(log_) << "Too many sync attempts";
