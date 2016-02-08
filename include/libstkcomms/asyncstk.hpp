@@ -57,8 +57,8 @@ namespace {
     using StreamBufIter = asio::buffers_iterator<asio::streambuf::const_buffers_type>;
 
     const std::chrono::milliseconds kSyncRetryTimeout { 500 };
-    const std::chrono::seconds kSyncTimeout { 3 };
-    const unsigned kSyncMaxAttempts { 10 };
+    const std::chrono::seconds kSyncTimeout { 2 };
+    const unsigned kSyncMaxAttempts { 3 };
     using UString = std::basic_string<uint8_t>;
     const UString kMobotILSignature { 0x1e, 0xa7, 0x01 };
     const UString kMobotASignature { 0x1e, 0x95, 0x0f };
