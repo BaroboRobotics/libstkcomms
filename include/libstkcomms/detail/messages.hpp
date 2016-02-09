@@ -1,22 +1,19 @@
 #ifndef LIBSTKCOMMS_MESSAGES_HPP
 #define LIBSTKCOMMS_MESSAGES_HPP
 
-#include <libstkcomms/command.h>
-
-#include <boost/asio/buffer.hpp>
-
-#include <boost/endian/arithmetic.hpp>
-#include <boost/regex.hpp>
+#include <libstkcomms/detail/command.h>
+#include <libstkcomms/detail/prefix.hpp>
 
 #include <array>
 
 #include <cstdint>
 
 namespace stk {
+namespace detail {
 namespace {
 
 const uint8_t kSyncMessage [] = { Cmnd_STK_GET_SYNC, Sync_CRC_EOP };
-const boost::regex kSyncReply {"\x14\x10"};
+const regex kSyncReply {"\x14\x10"};
 
 const uint8_t kSetDeviceMessage [] = {
     Cmnd_STK_SET_DEVICE,
@@ -57,7 +54,7 @@ const uint8_t kEnterProgmodeMessage [] = { Cmnd_STK_ENTER_PROGMODE, Sync_CRC_EOP
 const uint8_t kLeaveProgmodeMessage [] = { Cmnd_STK_LEAVE_PROGMODE, Sync_CRC_EOP };
 
 const uint8_t kReadSignMessage [] = { Cmnd_STK_READ_SIGN, Sync_CRC_EOP };
-const boost::regex kReadSignReply {"\x14(.{3})\x10"};
+const regex kReadSignReply {"\x14(.{3})\x10"};
 
 const uint8_t kFlashType [] = { 'F' };
 const uint8_t kEepromType [] = { 'E' };
@@ -65,27 +62,28 @@ const uint8_t kEepromType [] = { 'E' };
 const uint8_t kLoadAddressPrefix [] = { Cmnd_STK_LOAD_ADDRESS };
 const uint8_t kCrcEop [] = { Sync_CRC_EOP };
 
-inline std::array<boost::asio::const_buffer, 3>
-loadAddressMessage (boost::asio::const_buffer address) {
+inline std::array<const_buffer, 3>
+loadAddressMessage (const_buffer address) {
     return {
-        boost::asio::buffer(kLoadAddressPrefix),
+        buffer(kLoadAddressPrefix),
         address,
-        boost::asio::buffer(kCrcEop)
+        buffer(kCrcEop)
     };
 }
 
 const uint8_t kProgPagePrefix [] = { Cmnd_STK_PROG_PAGE };
 
-inline std::array<boost::asio::const_buffer, 5>
-progPageMessage (boost::asio::const_buffer size, boost::asio::const_buffer type, boost::asio::const_buffer data) {
+inline std::array<const_buffer, 5>
+progPageMessage (const_buffer size, const_buffer type, const_buffer data) {
     return {
-        boost::asio::buffer(kProgPagePrefix),
+        buffer(kProgPagePrefix),
         size, type, data,
-        boost::asio::buffer(kCrcEop)
+        buffer(kCrcEop)
     };
 }
 
 } // <anonymous>
+} // detail
 } // stk
 
 #endif

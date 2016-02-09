@@ -1,7 +1,7 @@
 #ifndef LIBSTKCOMMS_PROGRAMMER_HPP
 #define LIBSTKCOMMS_PROGRAMMER_HPP
 
-#include <libstkcomms/asyncstk.hpp>
+#include <libstkcomms/detail/programall.hpp>
 
 #include <util/iothread.hpp>
 
@@ -9,17 +9,17 @@
 
 namespace stk {
 
-typedef void ProgramAllHandlerSignature(error_code);
+typedef void ProgramAllHandlerSignature(boost::system::error_code);
     
 class ProgrammerImpl : public std::enable_shared_from_this<ProgrammerImpl> {
 public:
-    explicit ProgrammerImpl (asio::io_service& ios)
+    explicit ProgrammerImpl (boost::asio::io_service& ios)
         : mContext(ios)
         , mTimer(mContext)
         , mSerialPort(mContext)
     {}
 
-    void close (error_code& ec) {
+    void close (boost::system::error_code& ec) {
         auto self = this->shared_from_this();
         mContext.post([self, this, ec]() mutable {
             mTimer.expires_at(decltype(mTimer)::time_point::min());
@@ -29,22 +29,24 @@ public:
 
     template <class FlashProgress, class EepromProgress, class CompletionToken>
     BOOST_ASIO_INITFN_RESULT_TYPE(CompletionToken, ProgramAllHandlerSignature)
-    asyncProgramAll (asio::io_service::work work,
+    asyncProgramAll (boost::asio::io_service::work work,
         const std::string& path,
         uint32_t flashBase,
-        const_buffer flash,
+        boost::asio::const_buffer flash,
         FlashProgress&& flashProgress,
         uint32_t eepromBase,
-        const_buffer eeprom,
+        boost::asio::const_buffer eeprom,
         EepromProgress&& eepromProgress,
         CompletionToken&& token)
 {
-        asio::detail::async_result_init<
+        boost::asio::detail::async_result_init<
             CompletionToken, ProgramAllHandlerSignature
         > init { std::forward<CompletionToken>(token) };
 
+        using namespace std::placeholders;
+
         auto self = this->shared_from_this();
-        asyncProgramAllImpl(mSerialPort, path, mTimer,
+        detail::asyncProgramAllImpl(mSerialPort, path, mTimer,
             flashBase, flash,
             std::bind(&ProgrammerImpl::callProgress<FlashProgress>, self, work, flashProgress, _1),
             eepromBase, eeprom,
@@ -56,18 +58,18 @@ public:
 
 private:
     template <class Progress>
-    void callProgress (asio::io_service::work work, Progress progress, uint16_t n) {
+    void callProgress (boost::asio::io_service::work work, Progress progress, uint16_t n) {
         work.get_io_service().post(std::bind(progress, n));
     }
 
     template <class Handler>
-    void callHandler (asio::io_service::work work, Handler handler, error_code ec) {
+    void callHandler (boost::asio::io_service::work work, Handler handler, boost::system::error_code ec) {
         work.get_io_service().post(std::bind(handler, ec));
     }
 
-    asio::io_service& mContext;
-    asio::steady_timer mTimer;
-    asio::serial_port mSerialPort;
+    boost::asio::io_service& mContext;
+    boost::asio::steady_timer mTimer;
+    boost::asio::serial_port mSerialPort;
 };
 
 template <class Impl>
@@ -94,7 +96,7 @@ public:
     }
 
     void destroy (implementation_type& impl) {
-        auto ec = error_code{};
+        auto ec = boost::system::error_code{};
         close(impl, ec);
         impl.reset();
     }
@@ -114,9 +116,9 @@ public:
 
     template <class... Args>
     auto asyncProgramAll (implementation_type& impl, Args&&... args) -> decltype(
-        impl->asyncProgramAll(std::declval<asio::io_service::work>(), std::forward<Args>(args)...))
+        impl->asyncProgramAll(std::declval<boost::asio::io_service::work>(), std::forward<Args>(args)...))
     {
-        asio::io_service::work work { this->get_io_service() };
+        boost::asio::io_service::work work { this->get_io_service() };
         return impl->asyncProgramAll(work, std::forward<Args>(args)...);
     }
 
@@ -129,9 +131,9 @@ template <class Impl>
 boost::asio::io_service::id ProgrammerService<Impl>::id;
 
 template <class Service>
-class BasicProgrammer : public asio::basic_io_object<Service> {
+class BasicProgrammer : public boost::asio::basic_io_object<Service> {
 public:
-    explicit BasicProgrammer (asio::io_service& ios)
+    explicit BasicProgrammer (boost::asio::io_service& ios)
         : boost::asio::basic_io_object<Service>(ios)
     {}
 
@@ -144,7 +146,7 @@ public:
 #endif
 
     void close () {
-        error_code ec;
+        boost::system::error_code ec;
         close(ec);
         if (ec) {
             throw boost::system::system_error(ec);

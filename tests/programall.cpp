@@ -17,6 +17,7 @@
 
 namespace asio = boost::asio;
 namespace fs = boost::filesystem;
+using boost::system::error_code;
 
 int main (int argc, char** argv) try {
     boost::log::sources::logger lg;
@@ -61,7 +62,7 @@ int main (int argc, char** argv) try {
 
             stk::Programmer programmer{io.context()};
             asio::signal_set sigSet{io.context(), SIGTERM, SIGINT};
-            sigSet.async_wait([&done, &programmer, lg](stk::error_code ec, int sigNo) mutable {
+            sigSet.async_wait([&done, &programmer, lg](error_code ec, int sigNo) mutable {
                 if (!ec) {
                     programmer.close(ec);
                     done = true;
