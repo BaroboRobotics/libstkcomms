@@ -143,11 +143,34 @@ struct ProgramPages {
         }
         else if (asio::error::operation_aborted != ec) {
             BOOST_LOG(log_) << "ProgramPages I/O error: " << ec.message();
+            timer_.expires_at(asio::steady_timer::time_point::min());
             sp_.close();
             rc_ = ec;
         }
     }
 };
+
+template <class Progress, class Handler>
+BOOST_ASIO_INITFN_RESULT_TYPE(Handler, void(error_code))
+asyncProgramPages (asio::serial_port& sp,
+    asio::steady_timer& timer,
+    uint16_t txAddress,
+    uint16_t pageSize,
+    const_buffer type,
+    const_buffer code,
+    Progress&& progress,
+    Handler&& handler)
+{
+    asio::detail::async_result_init<
+        Handler, void(error_code)
+    > init { std::forward<Handler>(handler) };
+
+    using Op = ProgramPages<Progress>;
+    makeOperation<Op>(move(init.handler), sp, timer,
+        txAddress, pageSize, type, code, std::forward<Progress>(progress))();
+
+    return init.result.get();
+}
 
 template <class FlashProgress, class EepromProgress>
 struct ProgramAll {
@@ -171,7 +194,6 @@ struct ProgramAll {
     boost::match_results<StreamBufIter> what_;
 
     asio::steady_timer& timer_;
-    int syncAttempts_ = 0;
 
     uint32_t flashBase_;
     const_buffer flash_;
@@ -206,51 +228,30 @@ struct ProgramAll {
                 return;
             }
 
+            if (timer_.expires_at() == asio::steady_timer::time_point::min()) {
+                BOOST_LOG(log_) << "ProgramAll cancelled before setting options";
+                return;
+            }
             timer_.expires_from_now(util::kSerialSettleTimeAfterOpen);
             yield timer_.async_wait(move(op));
+
             util::setSerialPortOptions(sp_, 57600, ec);
             if (ec) {
                 rc_ = ec;
                 return;
             }
 
-            // Spawn a child to bang the serial port with sync messages.
-            // We can kill it later with:
-            //   timer_.expires_at(decltype(timer_)::time_point::min())
-            // Simply calling timer_.cancel() wouldn't do the trick without a
-            // separate boolean flag in case this coroutine child were
-            // suspended on the async_write() call.
             if (timer_.expires_at() == asio::steady_timer::time_point::min()) {
                 BOOST_LOG(log_) << "ProgramAll cancelled before sync";
                 return;
             }
             timer_.expires_from_now(kStartDelay);
             yield timer_.async_wait(move(op));
-            fork Op{op}();
-            if (op.is_child()) {
-                while (++syncAttempts_ <= kSyncMaxAttempts) {
-                    BOOST_LOG(log_) << "Writing sync message (" << syncAttempts_ << "/" << kSyncMaxAttempts << ")";
-                    yield async_write(sp_, buffer(kSyncMessage), move(op));
-                    if (timer_.expires_at() == asio::steady_timer::time_point::min()) {
-                        BOOST_LOG(log_) << "Sync spammer cancelled mid-write";
-                        return;
-                    }
-                    timer_.expires_from_now(kRetryTimeout);
-                    yield timer_.async_wait(move(op));
-                }
-                BOOST_LOG(log_) << "Too many sync attempts";
-                rc_ = Status::TIMEOUT;
-                sp_.close();
-                return;
-            }
 
-            // Parent
-            BOOST_LOG(log_) << "Reading sync reply";
-            yield async_read_until(sp_, buf_, weReceive(what_, kSyncReply), move(op));
-            // Kill the child we forked
-            timer_.expires_at(asio::steady_timer::time_point::min());
+            BOOST_LOG(log_) << "Syncing with device";
+            yield asyncTransaction(sp_, timer_, kSyncMaxAttempts, buffer(kSyncMessage),
+                buf_, weReceive(what_, kSyncReply), move(op));
             if (!handleSyncReply(n, buf_, what_, rc_)) return;
-            BOOST_LOG(log_) << "Handshake success";
 
             BOOST_LOG(log_) << "Setting device parameters";
             yield asyncTransaction(sp_, timer_, buffer(kSetDeviceMessage),
@@ -277,20 +278,20 @@ struct ProgramAll {
             yield {
                 // Guaranteed to be safe because we called blobTooBig() earlier
                 auto txAddress = static_cast<uint16_t>(flashBase_ / 2);
-                makeOperation<ProgramPages<FlashProgress>>(move(op), sp_, timer_,
+                asyncProgramPages(sp_, timer_,
                     txAddress, pageSize_,
                     buffer(kFlashType), flash_,
-                    move(flashProgress_))();
+                    move(flashProgress_), move(op));
             }
 
             BOOST_LOG(log_) << "Programming EEPROM";
             yield {
                 // Guaranteed to be safe because we called blobTooBig() earlier
                 auto txAddress = static_cast<uint16_t>(eepromBase_ / 2);
-                makeOperation<ProgramPages<EepromProgress>>(move(op), sp_, timer_,
+                asyncProgramPages(sp_, timer_,
                     txAddress, pageSize_,
                     buffer(kEepromType), eeprom_,
-                    move(eepromProgress_))();
+                    move(eepromProgress_), move(op));
             }
 
             BOOST_LOG(log_) << "Leaving programming mode";
@@ -320,7 +321,7 @@ private:
 
 template <class FlashProgress, class EepromProgress, class Handler>
 BOOST_ASIO_INITFN_RESULT_TYPE(Handler, void(error_code))
-asyncProgramAllImpl (asio::serial_port& sp,
+asyncProgramAll (asio::serial_port& sp,
     const std::string& path,
     asio::steady_timer& timer,
     uint32_t flashBase,

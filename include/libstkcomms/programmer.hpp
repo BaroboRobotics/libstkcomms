@@ -46,7 +46,7 @@ public:
         using namespace std::placeholders;
 
         auto self = this->shared_from_this();
-        detail::asyncProgramAllImpl(mSerialPort, path, mTimer,
+        detail::asyncProgramAll(mSerialPort, path, mTimer,
             flashBase, flash,
             std::bind(&ProgrammerImpl::callProgress<FlashProgress>, self, work, flashProgress, _1),
             eepromBase, eeprom,
@@ -104,15 +104,6 @@ public:
     void close (implementation_type& impl, boost::system::error_code& ec) {
         impl->close(ec);
     }
-
-#if 0
-    template <class Handler>
-    BOOST_ASIO_INITFN_RESULT_TYPE(Handler, ProgramAllHandlerSignature)
-    asyncProgramAll (implementation_type& impl, Handler&& handler) {
-        boost::asio::io_service::work work { this->get_io_service() };
-        return impl->asyncProgramAll(work, std::forward<Handler>(handler));
-    }
-#endif
 
     template <class... Args>
     auto asyncProgramAll (implementation_type& impl, Args&&... args) -> decltype(
