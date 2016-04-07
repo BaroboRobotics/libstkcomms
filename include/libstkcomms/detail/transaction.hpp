@@ -1,6 +1,8 @@
 #ifndef LIBSTKCOMMS_DETAIL_TRANSACTION_HPP
 #define LIBSTKCOMMS_DETAIL_TRANSACTION_HPP
 
+#include <util/asynccompletion.hpp>
+
 #include <libstkcomms/detail/prefix.hpp>
 
 #include <boost/asio/async_result.hpp>
@@ -138,7 +140,7 @@ asyncTransaction (asio::serial_port& sp,
     MatchCondition matchCond,
     Handler&& handler)
 {
-    asio::detail::async_result_init<
+    util::AsyncCompletion<
         Handler, void(error_code, size_t)
     > init { std::forward<Handler>(handler) };
 

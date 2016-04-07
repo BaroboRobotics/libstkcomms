@@ -1,6 +1,8 @@
 #ifndef LIBSTKCOMMS_PROGRAMMER_HPP
 #define LIBSTKCOMMS_PROGRAMMER_HPP
 
+#include <util/asynccompletion.hpp>
+
 #include <libstkcomms/detail/programall.hpp>
 
 #include <util/iothread.hpp>
@@ -10,7 +12,7 @@
 namespace stk {
 
 typedef void ProgramAllHandlerSignature(boost::system::error_code);
-    
+
 class ProgrammerImpl : public std::enable_shared_from_this<ProgrammerImpl> {
 public:
     explicit ProgrammerImpl (boost::asio::io_service& ios)
@@ -39,7 +41,7 @@ public:
         EepromProgress&& eepromProgress,
         CompletionToken&& token)
 {
-        boost::asio::detail::async_result_init<
+        util::AsyncCompletion<
             CompletionToken, ProgramAllHandlerSignature
         > init { std::forward<CompletionToken>(token) };
 

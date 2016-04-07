@@ -8,6 +8,7 @@
 #include <libstkcomms/detail/prefix.hpp>
 #include <libstkcomms/detail/transaction.hpp>
 
+#include <util/asynccompletion.hpp>
 #include <util/setserialportoptions.hpp>
 
 #include <boost/asio/async_result.hpp>
@@ -161,7 +162,7 @@ asyncProgramPages (asio::serial_port& sp,
     Progress&& progress,
     Handler&& handler)
 {
-    asio::detail::async_result_init<
+    util::AsyncCompletion<
         Handler, void(error_code)
     > init { std::forward<Handler>(handler) };
 
@@ -332,7 +333,7 @@ asyncProgramAll (asio::serial_port& sp,
     EepromProgress&& eepromProgress,
     Handler&& handler)
 {
-    asio::detail::async_result_init<
+    util::AsyncCompletion<
         Handler, void(error_code)
     > init { std::forward<Handler>(handler) };
 
