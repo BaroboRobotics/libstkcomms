@@ -8,8 +8,8 @@
 #include <libstkcomms/detail/prefix.hpp>
 #include <libstkcomms/detail/transaction.hpp>
 
-#include <util/asynccompletion.hpp>
-#include <util/setserialportoptions.hpp>
+#include <util/asio/asynccompletion.hpp>
+#include <util/asio/setserialportoptions.hpp>
 
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/io_service.hpp>

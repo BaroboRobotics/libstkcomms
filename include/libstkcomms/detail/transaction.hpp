@@ -1,7 +1,7 @@
 #ifndef LIBSTKCOMMS_DETAIL_TRANSACTION_HPP
 #define LIBSTKCOMMS_DETAIL_TRANSACTION_HPP
 
-#include <util/asynccompletion.hpp>
+#include <util/asio/asynccompletion.hpp>
 
 #include <libstkcomms/detail/prefix.hpp>
 

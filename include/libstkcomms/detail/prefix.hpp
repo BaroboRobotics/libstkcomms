@@ -1,7 +1,7 @@
 #ifndef LIBSTKCOMMS_DETAIL_PREFIX_HPP
 #define LIBSTKCOMMS_DETAIL_PREFIX_HPP
 
-#include <util/composed.hpp>
+#include <util/asio/composed.hpp>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/read_until.hpp>

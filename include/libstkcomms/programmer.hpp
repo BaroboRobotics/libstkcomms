@@ -1,11 +1,10 @@
 #ifndef LIBSTKCOMMS_PROGRAMMER_HPP
 #define LIBSTKCOMMS_PROGRAMMER_HPP
 
-#include <util/asynccompletion.hpp>
+#include <util/asio/asynccompletion.hpp>
+#include <util/asio/iothread.hpp>
 
 #include <libstkcomms/detail/programall.hpp>
-
-#include <util/iothread.hpp>
 
 #include <utility>
 
