@@ -41,6 +41,7 @@ endif()
 
 #install(TARGETS stkcomms DESTINATION ${dest})
 
+option(LIBSTKCOMMS_BUILD_TESTS "Build libstkcomms tests" OFF)
 if(LIBSTKCOMMS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
