@@ -3,9 +3,9 @@
 #include <usbcdc/devices.hpp>
 
 #include <util/blob.hpp>
-#include <util/iothread.hpp>
+#include <util/asio/iothread.hpp>
 #include <util/readfile.hpp>
-#include <util/setserialportoptions.hpp>
+#include <util/asio/setserialportoptions.hpp>
 
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/use_future.hpp>
