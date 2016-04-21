@@ -40,7 +40,7 @@ public:
         EepromProgress&& eepromProgress,
         CompletionToken&& token)
 {
-        util::AsyncCompletion<
+        util::asio::AsyncCompletion<
             CompletionToken, ProgramAllHandlerSignature
         > init { std::forward<CompletionToken>(token) };
 
@@ -116,7 +116,7 @@ public:
 
 private:
     void shutdown_service () {}
-    util::IoThread mIoThread;
+    util::asio::IoThread mIoThread;
 };
 
 template <class Impl>

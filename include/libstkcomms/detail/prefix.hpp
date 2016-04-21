@@ -1,7 +1,7 @@
 #ifndef LIBSTKCOMMS_DETAIL_PREFIX_HPP
 #define LIBSTKCOMMS_DETAIL_PREFIX_HPP
 
-#include <util/asio/composed.hpp>
+#include <util/asio/operation.hpp>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/read_until.hpp>
@@ -19,8 +19,8 @@
 namespace stk {
 namespace detail {
 namespace {
-    using util::composed::makeOperation;
-    using util::composed::Operation;
+    using util::asio::makeOperation;
+    using util::asio::Operation;
 
     using std::move;
 

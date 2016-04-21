@@ -140,7 +140,7 @@ asyncTransaction (asio::serial_port& sp,
     MatchCondition matchCond,
     Handler&& handler)
 {
-    util::AsyncCompletion<
+    util::asio::AsyncCompletion<
         Handler, void(error_code, size_t)
     > init { std::forward<Handler>(handler) };
 

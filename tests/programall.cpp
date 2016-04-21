@@ -5,7 +5,6 @@
 #include <util/blob.hpp>
 #include <util/asio/iothread.hpp>
 #include <util/readfile.hpp>
-#include <util/asio/setserialportoptions.hpp>
 
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/use_future.hpp>
@@ -46,7 +45,7 @@ int main (int argc, char** argv) try {
     BOOST_LOG(lg) << "EEPROM is " << eeprom.code().size()
         << " bytes starting at address " << eeprom.address();
 
-    util::IoThread io;
+    util::asio::IoThread io;
 
     BOOST_LOG(lg) << "Waiting for USB CDC device";
     auto done = false;

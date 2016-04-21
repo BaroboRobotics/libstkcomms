@@ -162,7 +162,7 @@ asyncProgramPages (asio::serial_port& sp,
     Progress&& progress,
     Handler&& handler)
 {
-    util::AsyncCompletion<
+    util::asio::AsyncCompletion<
         Handler, void(error_code)
     > init { std::forward<Handler>(handler) };
 
@@ -233,10 +233,10 @@ struct ProgramAll {
                 BOOST_LOG(log_) << "ProgramAll cancelled before setting options";
                 return;
             }
-            timer_.expires_from_now(util::kSerialSettleTimeAfterOpen);
+            timer_.expires_from_now(util::asio::kSerialSettleTimeAfterOpen);
             yield timer_.async_wait(move(op));
 
-            util::setSerialPortOptions(sp_, 57600, ec);
+            util::asio::setSerialPortOptions(sp_, 57600, ec);
             if (ec) {
                 rc_ = ec;
                 return;
@@ -333,7 +333,7 @@ asyncProgramAll (asio::serial_port& sp,
     EepromProgress&& eepromProgress,
     Handler&& handler)
 {
-    util::AsyncCompletion<
+    util::asio::AsyncCompletion<
         Handler, void(error_code)
     > init { std::forward<Handler>(handler) };
 
