@@ -18,7 +18,8 @@ find_package(Threads)
 # Targets and properties
 
 add_library(stkcomms STATIC
-    src/system_error.cpp)
+    src/system_error.cpp
+    src/blob.cpp)
 
 set_target_properties(stkcomms PROPERTIES
     VERSION ${PROJECT_VERSION}
