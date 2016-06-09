@@ -4,15 +4,10 @@
 cmake_minimum_required(VERSION 3.2.1)
 project(stkcomms VERSION 0.1.0)
 
-if(TARGET stkcomms)
-    # FIXME make sure that the current target's version or configuration matches?
-    # this feels rather dangerous. find_package would solve this conundrum :/
-    message(FATAL_ERROR "stkcomms already configured")
-endif()
-
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost 1.59.0 REQUIRED COMPONENTS system filesystem log log_setup thread date_time regex)
 
+find_package(cxx-util)
 find_package(Threads)
 
 # Targets and properties
@@ -29,26 +24,52 @@ set_target_properties(stkcomms PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
-target_include_directories(stkcomms PUBLIC include ${Boost_INCLUDE_DIRS})
+target_include_directories(stkcomms PRIVATE include PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(stkcomms
-    PUBLIC baromesh-common cxx-util
+    PUBLIC barobo::cxx-util
            ${Boost_LIBRARIES}
            ${CMAKE_THREAD_LIBS_INIT})
-
-# Staging
-
-if(WIN32)
-    set(dest .)
-elseif(APPLE)
-    set(dest ../MacOS)
-else()
-    set(dest lib)
-endif()
-
-#install(TARGETS stkcomms DESTINATION ${dest})
 
 option(LIBSTKCOMMS_BUILD_TESTS "Build libstkcomms tests" OFF)
 if(LIBSTKCOMMS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+install(TARGETS stkcomms EXPORT barobo
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
+install(DIRECTORY include/ DESTINATION include)
+
+# Boilerplate follows
+
+export(EXPORT barobo
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-targets.cmake"
+    NAMESPACE barobo::
+)
+
+install(EXPORT barobo
+    FILE ${PROJECT_NAME}-targets.cmake
+    NAMESPACE barobo::
+    DESTINATION cmake
+)
+
+file(WRITE "${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
+    "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}-targets.cmake\")"
+)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}-configVersion.cmake"
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}-configVersion.cmake"
+    DESTINATION cmake
+)
