@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.2.1)
 project(stkcomms VERSION 0.1.0)
 
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost 1.59.0 REQUIRED COMPONENTS system filesystem log log_setup thread date_time regex)
+find_package(Boost 1.54.0 REQUIRED COMPONENTS system filesystem log log_setup thread date_time regex)
 
 find_package(cxx-util)
 find_package(Threads)
