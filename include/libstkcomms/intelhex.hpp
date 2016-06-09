@@ -14,7 +14,7 @@
 
 // Adapt Blob to be a Fusion sequence so we can use the Phoenix at_c lazy
 // accessor in Spirit.Qi semantic actions.
-BOOST_FUSION_ADAPT_ADT(util::Blob,
+BOOST_FUSION_ADAPT_ADT(stk::Blob,
     (obj.address(), obj.address(val))
     (obj.code(), obj.code(val)))
 
