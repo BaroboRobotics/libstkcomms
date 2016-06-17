@@ -1,6 +1,7 @@
 #ifndef LIBSTKCOMMS_DETAIL_TRANSACTION_HPP
 #define LIBSTKCOMMS_DETAIL_TRANSACTION_HPP
 
+#include <util/log.hpp>
 #include <util/asio/asynccompletion.hpp>
 
 #include <libstkcomms/detail/prefix.hpp>
@@ -9,9 +10,6 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/serial_port.hpp>
 #include <boost/asio/steady_timer.hpp>
-
-#include <boost/log/sources/logger.hpp>
-#include <boost/log/sources/record_ostream.hpp>
 
 #include <boost/asio/yield.hpp>
 
@@ -44,7 +42,7 @@ struct Transaction {
     error_code rc_ = asio::error::operation_aborted;
     size_t n_ = 0;
 
-    boost::log::sources::logger log_;
+    util::log::Logger log_;
 
     std::tuple<error_code, size_t> result () const {
         return std::make_tuple(rc_, n_);

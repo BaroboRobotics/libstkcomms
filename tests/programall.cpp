@@ -19,7 +19,7 @@ namespace fs = boost::filesystem;
 using boost::system::error_code;
 
 int main (int argc, char** argv) try {
-    boost::log::sources::logger lg;
+    util::log::Logger lg;
 
     if (argc < 3) {
         BOOST_LOG(lg) << "Usage: " << argv[0] << " <file.hex> <file.eeprom>\n";
@@ -90,6 +90,6 @@ int main (int argc, char** argv) try {
     BOOST_LOG(lg) << "IO thread ran " << io.join() << " handlers";
 }
 catch (std::exception& e) {
-    boost::log::sources::logger lg;
+    util::log::Logger lg;
     BOOST_LOG(lg) << "Exception in main: " << e.what();
 }

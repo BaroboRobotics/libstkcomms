@@ -8,6 +8,7 @@
 #include <libstkcomms/detail/prefix.hpp>
 #include <libstkcomms/detail/transaction.hpp>
 
+#include <util/log.hpp>
 #include <util/asio/asynccompletion.hpp>
 #include <util/asio/setserialportoptions.hpp>
 
@@ -15,9 +16,6 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/serial_port.hpp>
 #include <boost/asio/steady_timer.hpp>
-
-#include <boost/log/sources/logger.hpp>
-#include <boost/log/sources/record_ostream.hpp>
 
 #include <algorithm>
 #include <array>
@@ -105,7 +103,7 @@ struct ProgramPages {
 
     Progress progress_;
 
-    boost::log::sources::logger log_;
+    util::log::Logger log_;
     error_code rc_ = asio::error::operation_aborted;
 
     std::tuple<error_code> result () {
@@ -208,7 +206,7 @@ struct ProgramAll {
 
     error_code rc_ = asio::error::operation_aborted;
 
-    boost::log::sources::logger log_;
+    util::log::Logger log_;
 
     std::tuple<error_code> result () {
         return std::make_tuple(rc_);
