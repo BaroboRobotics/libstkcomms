@@ -57,8 +57,19 @@ public:
         });
     }
 
+    template <class Duration>
+    void transactionTimeout (Duration&& timeout) {
+        mTransactionTimeout = std::forward<Duration>(timeout);
+    }
+
+    auto transactionTimeout () const {
+        return mTransactionTimeout;
+    }
+
     template <class Dur1, class Dur2>
     struct OpenDeviceOperation;
+    template <class Dur1, class Dur2>
+    friend struct OpenDeviceOperation;
 
     template <class Dur1, class Dur2, class CompletionToken>
     auto asyncOpenDevice (const std::string& path,
@@ -76,13 +87,38 @@ public:
         return init.result.get();
     }
 
+    template <class CompletionToken>
+    auto asyncSync (unsigned maxAttempts, CompletionToken&& token) {
+        util::asio::AsyncCompletion<
+            CompletionToken, void(boost::system::error_code)
+        > init { std::forward<CompletionToken>(token) };
+
+        asyncTransaction(maxAttempts,
+            boost::asio::buffer(detail::kSyncMessage), detail::kSyncReply,
+            [handler = std::move(init.handler), this, self = this->shared_from_this()]
+            (boost::system::error_code ec, size_t n) {
+                if (!ec) {
+                    checkSyncReply(n, ec);
+                    mContext.post(std::bind(handler, ec));
+                }
+                else {
+                    mContext.post(std::bind(handler, ec));
+                    close(ec);
+                }
+            });
+
+        return init.result.get();
+    }
+
     template <class FlashProgress, class EepromProgress>
     struct ProgramAllOperation;
+    template <class FlashProgress, class EepromProgress>
+    friend struct ProgramAllOperation;
 
     // Upload buffers of contiguous code and data to Flash and EEPROM on the device, each starting
     // at given base addresses.
     template <class FlashProgress, class EepromProgress, class CompletionToken>
-    auto asyncProgramAll (unsigned maxSyncAttempts,
+    auto asyncProgramAll (
         uint32_t flashBase,
         boost::asio::const_buffer flash,
         FlashProgress&& flashProgress,
@@ -97,7 +133,7 @@ public:
 
         using Op = ProgramAllOperation<FlashProgress, EepromProgress>;
         util::asio::makeOperation<Op>(std::move(init.handler),
-            this->shared_from_this(), maxSyncAttempts,
+            this->shared_from_this(),
             flashBase, flash, std::forward<FlashProgress>(flashProgress),
             eepromBase, eeprom, std::forward<EepromProgress>(eepromProgress)
         )();
@@ -105,8 +141,11 @@ public:
         return init.result.get();
     }
 
+private:
     template <class Progress>
     struct ProgramPagesOperation;
+    template <class Progress>
+    friend struct ProgramPagesOperation;
 
     // Upload a buffer of contiguous code to the device, starting at txAddress.
     // txAddress must be a 2-byte word address (i.e., byte address / 2). The code
@@ -136,6 +175,8 @@ public:
 
     template <class ConstBufferSequence>
     struct TransactionOperation;
+    template <class ConstBufferSequence>
+    friend struct TransactionOperation;
 
     // Perform one write -> read transaction on the given serial port. The given
     // timer is used to ensure that the write and read operations don't take too
@@ -203,15 +244,6 @@ public:
         return detail::FullRegexMatch<StreamBufIter>{mWhat, re};
     }
 
-    void transactionTimeout (auto timeout) {
-        mTransactionTimeout = timeout;
-    }
-
-    auto transactionTimeout () const {
-        return mTransactionTimeout;
-    }
-
-//private:
     boost::asio::io_service& mContext;
     boost::asio::steady_timer mTimer;
     boost::asio::serial_port mSerialPort;
@@ -229,8 +261,9 @@ public:
         : util::asio::TransparentIoObject<ProgrammerImpl>(context)
     {}
 
-    void transactionTimeout (auto timeout) {
-        this->get_implementation()->transactionTimeout(timeout);
+    template <class Duration>
+    void transactionTimeout (Duration&& timeout) {
+        this->get_implementation()->transactionTimeout(std::forward<Duration>(timeout));
     }
 
     auto transactionTimeout () const {
@@ -238,6 +271,7 @@ public:
     }
 
     UTIL_ASIO_DECL_ASYNC_METHOD(asyncOpenDevice)
+    UTIL_ASIO_DECL_ASYNC_METHOD(asyncSync)
     UTIL_ASIO_DECL_ASYNC_METHOD(asyncProgramAll)
 };
 
@@ -310,11 +344,9 @@ struct ProgrammerImpl::ProgramAllOperation {
     using Nest = ProgrammerImpl;
 
     ProgramAllOperation (std::shared_ptr<Nest> nest,
-        unsigned maxSyncAttempts,
         uint32_t flashBase, boost::asio::const_buffer flash, FlashProgress&& flashProgress,
         uint32_t eepromBase, boost::asio::const_buffer eeprom, EepromProgress&& eepromProgress)
         : nest_(std::move(nest))
-        , maxSyncAttempts_(maxSyncAttempts)
         , flashBase_(flashBase)
         , flash_(flash)
         , flashProgress_(std::forward<FlashProgress>(flashProgress))
@@ -324,8 +356,6 @@ struct ProgrammerImpl::ProgramAllOperation {
     {}
 
     std::shared_ptr<Nest> nest_;
-
-    const unsigned maxSyncAttempts_;
 
     uint32_t flashBase_;
     boost::asio::const_buffer flash_;
@@ -351,11 +381,6 @@ struct ProgrammerImpl::ProgramAllOperation {
                 rc_ = Status::BLOB_TOO_BIG;
                 return;
             }
-
-            BOOST_LOG(nest_->mLog) << "Syncing with device";
-            yield nest_->asyncTransaction(maxSyncAttempts_,
-                boost::asio::buffer(detail::kSyncMessage), detail::kSyncReply, std::move(op));
-            if (!nest_->checkSyncReply(n, rc_)) return;
 
             BOOST_LOG(nest_->mLog) << "Setting device parameters";
             yield nest_->asyncTransaction(
