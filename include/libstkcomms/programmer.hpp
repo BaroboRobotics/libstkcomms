@@ -603,9 +603,11 @@ struct ProgrammerImpl::TransactionOperation {
 
             yield boost::asio::async_read_until(
                 nest_->mSerialPort, nest_->mBuf, nest_->weReceive(re_), std::move(op));
-            nest_->mTimer.cancel();
+            nest_->mTimer.expires_at(boost::asio::steady_timer::time_point::min());
             rc_ = Status::OK;
             n_ = n;
+
+            yield break;
         }
         else if (ec != boost::asio::error::operation_aborted) {
             rc_ = ec;
