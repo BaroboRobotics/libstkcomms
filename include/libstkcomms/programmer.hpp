@@ -85,7 +85,7 @@ public:
         > init { std::forward<CompletionToken>(token) };
 
         using Op = OpenDeviceOperation<Dur1, Dur2>;
-        util::asio::makeOperation<Op>(std::move(init.handler),
+        util::asio::v1::makeOperation<Op>(std::move(init.handler),
             this->shared_from_this(), path,
             std::forward<Dur1>(settleDelay), std::forward<Dur2>(writeDelay)
         )();
@@ -138,7 +138,7 @@ public:
         > init { std::forward<CompletionToken>(token) };
 
         using Op = ProgramAllOperation<FlashProgress, EepromProgress>;
-        util::asio::makeOperation<Op>(std::move(init.handler),
+        util::asio::v1::makeOperation<Op>(std::move(init.handler),
             this->shared_from_this(),
             flashBase, flash, std::forward<FlashProgress>(flashProgress),
             eepromBase, eeprom, std::forward<EepromProgress>(eepromProgress)
@@ -172,7 +172,7 @@ private:
         > init { std::forward<CompletionToken>(token) };
 
         using Op = ProgramPagesOperation<Progress>;
-        util::asio::makeOperation<Op>(std::move(init.handler),
+        util::asio::v1::makeOperation<Op>(std::move(init.handler),
             this->shared_from_this(),
             txAddress, pageSize, type, code, std::forward<Progress>(progress))();
 
@@ -200,7 +200,7 @@ private:
         > init { std::forward<CompletionToken>(token) };
 
         using Op = TransactionOperation<ConstBufferSequence>;
-        util::asio::makeOperation<Op>(std::move(init.handler),
+        util::asio::v1::makeOperation<Op>(std::move(init.handler),
             this->shared_from_this(), maxAttempts, outBuf, re)();
 
         return init.result.get();
