@@ -49,6 +49,10 @@ public:
         , mTransactionTimeout(std::chrono::milliseconds(500))
     {}
 
+    void init (boost::asio::serial_port&& serialPort) {
+        mSerialPort = std::move(serialPort);
+    }
+
     void close (boost::system::error_code& ec) {
         auto self = this->shared_from_this();
         mContext.post([self, this, ec]() mutable {
@@ -56,6 +60,8 @@ public:
             mSerialPort.close(ec);
         });
     }
+
+    boost::asio::serial_port& stream () { return mSerialPort; }
 
     template <class Duration>
     void transactionTimeout (Duration&& timeout) {
@@ -253,26 +259,6 @@ private:
     std::chrono::milliseconds mTransactionTimeout;
 
     mutable util::log::Logger mLog;
-};
-
-class Programmer : public util::asio::TransparentIoObject<ProgrammerImpl> {
-public:
-    explicit Programmer (boost::asio::io_service& context)
-        : util::asio::TransparentIoObject<ProgrammerImpl>(context)
-    {}
-
-    template <class Duration>
-    void transactionTimeout (Duration&& timeout) {
-        this->get_implementation()->transactionTimeout(std::forward<Duration>(timeout));
-    }
-
-    auto transactionTimeout () const {
-        return this->get_implementation()->transactionTimeout();
-    }
-
-    UTIL_ASIO_DECL_ASYNC_METHOD(asyncOpenDevice)
-    UTIL_ASIO_DECL_ASYNC_METHOD(asyncSync)
-    UTIL_ASIO_DECL_ASYNC_METHOD(asyncProgramAll)
 };
 
 template <class Dur1, class Dur2>
@@ -627,6 +613,36 @@ struct ProgrammerImpl::TransactionOperation {
             nest_->close(ec);
         }
     }
+};
+
+class Programmer : public util::asio::TransparentIoObject<ProgrammerImpl> {
+public:
+    explicit Programmer (boost::asio::io_service& context)
+        : util::asio::TransparentIoObject<ProgrammerImpl>(context)
+    {}
+
+    explicit Programmer (boost::asio::serial_port&& serialPort)
+        : util::asio::TransparentIoObject<ProgrammerImpl>(serialPort.get_io_service())
+    {
+        this->get_implementation()->init(std::move(serialPort));
+    }
+
+    boost::asio::serial_port& stream () {
+        return this->get_implementation()->stream();
+    }
+
+    template <class Duration>
+    void transactionTimeout (Duration&& timeout) {
+        this->get_implementation()->transactionTimeout(std::forward<Duration>(timeout));
+    }
+
+    auto transactionTimeout () const {
+        return this->get_implementation()->transactionTimeout();
+    }
+
+    UTIL_ASIO_DECL_ASYNC_METHOD(asyncOpenDevice)
+    UTIL_ASIO_DECL_ASYNC_METHOD(asyncSync)
+    UTIL_ASIO_DECL_ASYNC_METHOD(asyncProgramAll)
 };
 
 } // namespace stk
