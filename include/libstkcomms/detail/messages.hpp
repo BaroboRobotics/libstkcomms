@@ -6,6 +6,7 @@
 #include <boost/regex.hpp>
 
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/streambuf.hpp>
 
 #include <array>
 #include <string>
@@ -14,12 +15,27 @@
 
 namespace stk { namespace detail { namespace {
 
+using StreamBuf = boost::asio::streambuf;
+using StreamBufIter = boost::asio::buffers_iterator<StreamBuf::const_buffers_type>;
+
 using UString = std::basic_string<uint8_t>;
 const UString kMobotILSignature { 0x1e, 0xa7, 0x01 };
 const UString kMobotASignature { 0x1e, 0x95, 0x0f };
 
 const uint8_t kSyncMessage [] = { Cmnd_STK_GET_SYNC, Sync_CRC_EOP };
 const boost::regex kSyncReply {"\x14\x10"};
+
+inline auto syncReplyValidator () {
+    return [](size_t n, StreamBuf& buf,
+            const boost::match_results<StreamBufIter>& what, boost::system::error_code& ec) {
+        if (what[0].matched) {
+            buf.consume(n);
+        }
+        else {
+            ec = Status::PROTOCOL_ERROR;
+        }
+    };
+}
 
 const uint8_t kSetDeviceMessage [] = {
     Cmnd_STK_SET_DEVICE,
@@ -61,6 +77,31 @@ const uint8_t kLeaveProgmodeMessage [] = { Cmnd_STK_LEAVE_PROGMODE, Sync_CRC_EOP
 
 const uint8_t kReadSignMessage [] = { Cmnd_STK_READ_SIGN, Sync_CRC_EOP };
 const boost::regex kReadSignReply {"\x14(.{3})\x10"};
+
+inline auto readSignReplyValidator (uint16_t& pageSize) {
+    return [&pageSize](size_t n, StreamBuf& buf,
+            const boost::match_results<StreamBufIter>& what, boost::system::error_code& ec) {
+        if (what[0].matched) {
+            const auto& sigMatch = what[1].str();
+            auto signature = detail::UString(sigMatch.begin(), sigMatch.end());
+            if (!signature.compare(detail::kMobotILSignature)) {
+                pageSize = 256;
+            }
+            else if (!signature.compare(detail::kMobotASignature)) {
+                pageSize = 128;
+            }
+            else {
+                ec = Status::UNKNOWN_SIGNATURE;
+            }
+            if (!ec) {
+                buf.consume(n);
+            }
+        }
+        else {
+            ec = Status::PROTOCOL_ERROR;
+        }
+    };
+}
 
 const uint8_t kFlashType [] = { 'F' };
 const uint8_t kEepromType [] = { 'E' };
