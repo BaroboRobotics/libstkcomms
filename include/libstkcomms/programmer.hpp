@@ -69,27 +69,6 @@ public:
         return mTransactionTimeout;
     }
 
-    template <class Dur1, class Dur2>
-    struct OpenDeviceOperation;
-    template <class Dur1, class Dur2>
-    friend struct OpenDeviceOperation;
-
-    template <class Dur1, class Dur2, class CompletionToken>
-    auto asyncOpenDevice (const std::string& path,
-            Dur1&& settleDelay, Dur2&& writeDelay, CompletionToken&& token) {
-        util::asio::AsyncCompletion<
-            CompletionToken, void(boost::system::error_code)
-        > init { std::forward<CompletionToken>(token) };
-
-        using Op = OpenDeviceOperation<Dur1, Dur2>;
-        util::asio::v1::makeOperation<Op>(std::move(init.handler),
-            this->shared_from_this(), path,
-            std::forward<Dur1>(settleDelay), std::forward<Dur2>(writeDelay)
-        )();
-
-        return init.result.get();
-    }
-
     template <class CompletionToken>
     auto asyncSync (unsigned maxAttempts, CompletionToken&& token) {
         return asyncTransaction(
@@ -154,70 +133,6 @@ private:
     std::chrono::milliseconds mTransactionTimeout;
 
     mutable util::log::Logger mLog;
-};
-
-template <class Dur1, class Dur2>
-struct ProgrammerImpl::OpenDeviceOperation {
-    using Nest = ProgrammerImpl;
-
-    OpenDeviceOperation (std::shared_ptr<Nest> nest, const std::string& path,
-        Dur1&& settleDelay, Dur2&& writeDelay)
-        : nest_(std::move(nest))
-        , path_(path)
-        , settleDelay_(std::forward<Dur1>(settleDelay))
-        , writeDelay_(std::forward<Dur2>(writeDelay))
-    {}
-
-    std::shared_ptr<Nest> nest_;
-    std::string path_;
-    Dur1 settleDelay_;
-    Dur2 writeDelay_;
-
-    boost::system::error_code rc_ = boost::asio::error::operation_aborted;
-
-    auto result () const {
-        return std::make_tuple(rc_);
-    }
-
-    template <class Op>
-    void operator() (Op&& op, boost::system::error_code ec = {}) {
-        if (!ec) reenter (op) {
-            nest_->mSerialPort.open(path_, ec);
-            if (ec) {
-                rc_ = ec;
-                return;
-            }
-
-            if (nest_->mTimer.expires_at() == boost::asio::steady_timer::time_point::min()) {
-                BOOST_LOG(nest_->mLog) << "OpenDeviceOperation cancelled before settle delay";
-                return;
-            }
-
-            nest_->mTimer.expires_from_now(settleDelay_);
-            yield nest_->mTimer.async_wait(std::move(op));
-
-            BOOST_LOG(nest_->mLog) << "Setting baud rate";
-            util::asio::setSerialPortOptions(nest_->mSerialPort, 57600, ec);
-            if (ec) {
-                rc_ = ec;
-                return;
-            }
-
-            if (nest_->mTimer.expires_at() == boost::asio::steady_timer::time_point::min()) {
-                BOOST_LOG(nest_->mLog) << "OpenDeviceOperation cancelled before write delay";
-                return;
-            }
-            nest_->mTimer.expires_from_now(writeDelay_);
-            yield nest_->mTimer.async_wait(std::move(op));
-
-            rc_ = Status::OK;
-        }
-        else if (boost::asio::error::operation_aborted != ec) {
-            rc_ = ec;
-            BOOST_LOG(nest_->mLog) << "OpenDeviceOperation: " << ec.message();
-            nest_->close(ec);
-        }
-    }
 };
 
 template <class FlashProgress, class EepromProgress, class CompletionToken>
@@ -499,7 +414,6 @@ public:
         return this->get_implementation()->transactionTimeout();
     }
 
-    UTIL_ASIO_DECL_ASYNC_METHOD(asyncOpenDevice)
     UTIL_ASIO_DECL_ASYNC_METHOD(asyncSync)
     UTIL_ASIO_DECL_ASYNC_METHOD(asyncProgramAll)
 };
