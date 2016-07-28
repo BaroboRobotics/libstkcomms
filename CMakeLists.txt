@@ -24,7 +24,10 @@ set_target_properties(stkcomms PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
-target_include_directories(stkcomms PRIVATE include PUBLIC ${Boost_INCLUDE_DIRS})
+target_include_directories(stkcomms
+    PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    PUBLIC ${Boost_INCLUDE_DIRS}
+)
 target_link_libraries(stkcomms
     PUBLIC barobo::cxx-util
            ${Boost_LIBRARIES}
