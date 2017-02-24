@@ -31,6 +31,8 @@
 #include <tuple>
 #include <utility>
 
+#include <sched.h>
+
 #include <boost/asio/yield.hpp>
 
 namespace stk {
@@ -304,8 +306,11 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
     , writeDone = false
     ]
     (auto&& op, boost::system::error_code ec = {}, size_t n = 0) mutable {
+        BOOST_LOG(op.log()) << "asyncTransaction: reenter on CPU=[" << sched_getcpu()
+                << "] ec=[" << ec.message() << "]";
         if (!ec) reenter (op) {
             if (!maxAttempts) {
+                BOOST_LOG(op.log()) << "asyncTransaction: passed 0 maxAttempts";
                 op.complete(make_error_code(Status::OK));
                 return;
             }
@@ -314,6 +319,7 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
             // will close the serial port.
             fork op.runChild();
             if (op.is_child()) {
+                BOOST_LOG(op.log()) << "asyncTransaction: write child Entering write loop";
                 while (!readDone && ++attempts <= maxAttempts) {
                     writeDone = false;
 
@@ -321,8 +327,10 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
                     // takes forever.
                     fork op.runChild();
                     if (op.is_child()) {
+                        BOOST_LOG(op.log()) << "asyncTransaction: write child beginning write watchdog";
                         if (mTimer.expires_at() ==
                                 boost::asio::steady_timer::time_point::min()) {
+                            BOOST_LOG(op.log()) << "asyncTransaction: write child already canceled";
                             return;
                         }
                         mTimer.expires_from_now(this->transactionTimeout());
@@ -336,6 +344,7 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
                             BOOST_LOG(op.log()) << "Transaction timed out on write";
                             this->close(ec);
                         }
+                        BOOST_LOG(op.log()) << "asyncTransaction: write child write watchdog done";
                         return;
                     }
 
@@ -343,9 +352,11 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
                         BOOST_LOG(op.log()) << "Retrying Transaction write attempt ("
                             << attempts << "/" << maxAttempts << ")";
                     }
+                    BOOST_LOG(op.log()) << "asyncTransaction: write child writing";
                     yield boost::asio::async_write(mSerialPort, outBuf, std::move(op));
                     writeDone = true;
 
+                    BOOST_LOG(op.log()) << "asyncTransaction: write child beginning read watchdog";
                     if (mTimer.expires_at() ==
                             boost::asio::steady_timer::time_point::min()) {
                         return;
@@ -361,9 +372,11 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
                     op.complete(make_error_code(Status::TIMEOUT));
                     this->close(ec);
                 }
+                BOOST_LOG(op.log()) << "asyncTransaction: write child read watchdog done";
                 return;
             }
 
+            BOOST_LOG(op.log()) << "asyncTransaction: reading";
             yield {
                 auto matchCond = detail::FullRegexMatch<detail::StreamBufIter>{what, re};
                 boost::asio::async_read_until(mSerialPort, *inBuf, matchCond, std::move(op));
@@ -371,9 +384,11 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
             readDone = true;
             mTimer.expires_at(boost::asio::steady_timer::time_point::min());
 
+            BOOST_LOG(op.log()) << "asyncTransaction: validating input";
             ec = Status::OK;  // ensure `ec` is 0 before calling `validator`
             validator(n, *inBuf, what, ec);
             op.complete(ec);
+            BOOST_LOG(op.log()) << "asyncTransaction: done";
         }
         else if (ec != boost::asio::error::operation_aborted) {
             BOOST_LOG(op.log()) << "TransactionOperation error: " << ec.message();
@@ -381,6 +396,10 @@ inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
             this->close(ec);
         }
     };
+
+    mTimer.expires_from_now(std::chrono::seconds(0));
+    // We use mTimer.expires_at(time_point::min()) to break the transaction attempt loop. Make sure
+    // it's in an "uncanceled" state before spawning the operation.
 
     return util::asio::asyncDispatch(mContext,
         std::make_tuple(make_error_code(boost::asio::error::operation_aborted)),
