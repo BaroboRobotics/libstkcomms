@@ -6,14 +6,14 @@
 #include <libstkcomms/detail/fullregexmatch.hpp>
 #include <libstkcomms/detail/messages.hpp>
 
-#include <util/asio/asynccompletion.hpp>
-#include <util/asio/operation.hpp>
-#include <util/asio/setserialportoptions.hpp>
-#include <util/asio/transparentservice.hpp>
+#include <composed/op.hpp>
+#include <composed/timed.hpp>
+#include <composed/handler_executor.hpp>
+
 #include <util/log.hpp>
 
-#include <boost/asio/serial_port.hpp>
-#include <boost/asio/steady_timer.hpp>
+#include <beast/core/handler_alloc.hpp>
+
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/read_until.hpp>
 #include <boost/asio/write.hpp>
@@ -22,13 +22,8 @@
 
 #include <boost/regex.hpp>
 
-#include <algorithm>
-#include <array>
 #include <chrono>
-#include <iterator>
 #include <limits>
-#include <string>
-#include <tuple>
 #include <utility>
 
 #include <sched.h>
@@ -37,405 +32,376 @@
 
 namespace stk {
 
-typedef void ProgramAllHandlerSignature(boost::system::error_code);
+template <class AsyncStream>
+class Programmer {
+    AsyncStream next_layer_;
 
-class ProgrammerImpl : public std::enable_shared_from_this<ProgrammerImpl> {
+    template <class FlashProgress, class EepromProgress, class Handler = void(boost::system::error_code)>
+    struct ProgramAllOp;
+
+    template <class Handler = void(boost::system::error_code)>
+    struct SyncOp;
+
+    template <class Progress, class Handler = void(boost::system::error_code)>
+    struct ProgramPagesOp;
+
+    template <class ConstBufferSequence, class Validator, class Handler = void(boost::system::error_code)>
+    struct TransactionOp;
+
 public:
-    explicit ProgrammerImpl (boost::asio::io_service& context)
-        : mContext(context)
-        , mTimer(mContext)
-        , mSerialPort(mContext)
-        , mTransactionTimeout(std::chrono::milliseconds(500))
-    {}
+    template <class... Args>
+    explicit Programmer(Args&&... args): next_layer_(std::forward<Args>(args)...) {}
 
-    void init (boost::asio::serial_port&& serialPort) {
-        mSerialPort = std::move(serialPort);
-    }
-
-    void close (boost::system::error_code& ec) {
-        auto self = this->shared_from_this();
-        mContext.post([self, this, ec]() mutable {
-            mTimer.expires_at(decltype(mTimer)::time_point::min());
-            mSerialPort.close(ec);
-        });
-    }
-
-    boost::asio::serial_port& stream () { return mSerialPort; }
-
-    template <class Duration>
-    void transactionTimeout (Duration&& timeout) {
-        mTransactionTimeout = std::forward<Duration>(timeout);
-    }
-
-    auto transactionTimeout () const {
-        return mTransactionTimeout;
-    }
-
-    template <class CompletionToken>
-    auto asyncSync (unsigned maxAttempts, CompletionToken&& token) {
-        return asyncTransaction(
-                maxAttempts,
-                boost::asio::buffer(detail::kSyncMessage),
-                detail::kSyncReply,
-                detail::syncReplyValidator(),
-                std::forward<CompletionToken>(token));
-    }
+    boost::asio::io_service& get_io_service() { return next_layer_.get_io_service(); }
+    AsyncStream& next_layer() { return next_layer_; }
 
     // Upload buffers of contiguous code and data to Flash and EEPROM on the device, each starting
     // at given base addresses.
-    template <class FlashProgress, class EepromProgress, class CompletionToken>
-    auto asyncProgramAll (
-        uint32_t flashBase,
-        boost::asio::const_buffer flash,
-        FlashProgress&& flashProgress,
-        uint32_t eepromBase,
-        boost::asio::const_buffer eeprom,
-        EepromProgress&& eepromProgress,
-        CompletionToken&& token);
+    template <class FlashProgress, class EepromProgress, class Token>
+    auto asyncProgramAll(
+            uint32_t flashBase,
+            boost::asio::const_buffer flash,
+            FlashProgress&& flashProgress,
+            uint32_t eepromBase,
+            boost::asio::const_buffer eeprom,
+            EepromProgress&& eepromProgress,
+            Token&& token) {
+        return composed::operation<ProgramAllOp<std::decay_t<FlashProgress>, std::decay_t<EepromProgress>>>{}(
+                *this,
+                flashBase, flash, std::forward<FlashProgress>(flashProgress),
+                eepromBase, eeprom, std::forward<EepromProgress>(eepromProgress),
+                std::forward<Token>(token));
+    }
 
 private:
+    template <class Token>
+    auto asyncSync(Token&& token) {
+        return composed::operation<SyncOp<>>{}(*this, std::forward<Token>(token));
+    }
+
     // Upload a buffer of contiguous code to the device, starting at txAddress.
     // txAddress must be a 2-byte word address (i.e., byte address / 2). The code
     // is uploaded in pages of pageSize bytes. type should be either a buffer with
     // 'F' for flash, or 'E' for EEPROM.
-    template <class Progress, class CompletionToken>
-    auto asyncProgramPages (
+    template <class Progress, class Token>
+    auto asyncProgramPages(
             uint16_t txAddress,
             uint16_t pageSize,
             boost::asio::const_buffer type,
             boost::asio::const_buffer code,
-            Progress&& progress,
-            CompletionToken&& token);
-
-    // Perform one write -> read transaction on the given serial port. The given
-    // timer is used to ensure that the write and read operations don't take too
-    // long. If the write takes too long, the serial port is simply closed. If the
-    // read operation takes too long, the write operation is retried, up to a
-    // maximum of maxAttempts retries. If zero is passed as maxAttempts,
-    // asyncTransaction is a no-op.
-    template <class ConstBufferSequence, class Validator, class CompletionToken>
-    auto asyncTransaction (unsigned maxAttempts,
-            const ConstBufferSequence& outBuf, boost::regex re, Validator&& validator,
-            CompletionToken&& token);
-
-    // Same as above, with a default 1 maxAttempts.
-    template <class ConstBufferSequence, class Validator, class CompletionToken>
-    auto asyncTransaction (
-            const ConstBufferSequence& outBuf, boost::regex re, Validator&& validator,
-            CompletionToken&& token)
-    {
-        return asyncTransaction(1, outBuf, re, std::forward<Validator>(validator),
-            std::forward<CompletionToken>(token));
+            Progress& progress,
+            Token&& token) {
+        return composed::operation<ProgramPagesOp<Progress>>{}(
+                *this, txAddress, pageSize, type, code,
+                progress, std::forward<Token>(token));
     }
 
-    boost::asio::io_service& mContext;
-    boost::asio::steady_timer mTimer;
-    boost::asio::serial_port mSerialPort;
-
-    std::chrono::milliseconds mTransactionTimeout;
-
-    mutable util::log::Logger mLog;
+    // Perform one write -> read transaction on the given serial port.
+    template <class ConstBufferSequence, class Validator, class Token>
+    auto asyncTransaction(
+            const ConstBufferSequence& outBuf, boost::regex re, Validator&& validator,
+            Token&& token) {
+        return composed::operation<TransactionOp<ConstBufferSequence, std::decay_t<Validator>>>{}(
+                *this, outBuf, std::move(re),
+                std::forward<Validator>(validator), std::forward<Token>(token));
+    }
 };
 
-template <class FlashProgress, class EepromProgress, class CompletionToken>
-inline auto ProgrammerImpl::asyncProgramAll (
-        uint32_t flashBase, boost::asio::const_buffer flash, FlashProgress&& flashProgress,
-        uint32_t eepromBase, boost::asio::const_buffer eeprom, EepromProgress&& eepromProgress,
-        CompletionToken&& token) {
+template <class AsyncStream>
+template <class FlashProgress, class EepromProgress, class Handler>
+struct Programmer<AsyncStream>::ProgramAllOp: boost::asio::coroutine {
+    using handler_type = Handler;
+    using allocator_type = beast::handler_alloc<char, handler_type>;
+    using executor_type = composed::handler_executor<handler_type>;
 
-    auto blobTooBig = [&] {
-        auto flashMax = flashBase + boost::asio::buffer_size(flash);
-        auto eepromMax = eepromBase + boost::asio::buffer_size(eeprom);
-        auto maxAddress = std::numeric_limits<uint16_t>::max();
-        return flashMax / 2 > maxAddress
-            || eepromMax / 2 > maxAddress;
-    }();
+    using logger_type = composed::logger;
+    logger_type get_logger() const { return &lg; }
 
-    auto coroutine =
-    [ =
-    , this
-    , pageSize = uint16_t(0)
-    ]
-    (auto&& op, boost::system::error_code ec = {}) mutable {
-        if (!ec) reenter (op) {
-            // Guarantee that the blobs we got passed will actually fit on a Linkbot
-            if (blobTooBig) {
-                op.complete(make_error_code(Status::BLOB_TOO_BIG));
-                return;
-            }
+    Programmer& self;
 
-            BOOST_LOG(op.log()) << "Setting device parameters";
-            yield this->asyncTransaction(
-                boost::asio::buffer(detail::kSetDeviceMessage),
-                detail::kSyncReply, detail::syncReplyValidator(), std::move(op));
+    uint32_t flashBase;
+    boost::asio::const_buffer flash;
+    FlashProgress flashProgress;
+    uint32_t eepromBase;
+    boost::asio::const_buffer eeprom;
+    EepromProgress eepromProgress;
 
-            BOOST_LOG(op.log()) << "Setting extended device parameters";
-            yield this->asyncTransaction(
-                boost::asio::buffer(detail::kSetDeviceExtMessage),
-                detail::kSyncReply, detail::syncReplyValidator(), std::move(op));
+    uint16_t pageSize = 0;
 
-            BOOST_LOG(op.log()) << "Entering programming mode";
-            yield this->asyncTransaction(
-                boost::asio::buffer(detail::kEnterProgmodeMessage),
-                detail::kSyncReply, detail::syncReplyValidator(), std::move(op));
+    mutable util::log::Logger lg;
+    boost::system::error_code ec;
 
-            BOOST_LOG(op.log()) << "Reading signature";
-            yield this->asyncTransaction(
-                boost::asio::buffer(detail::kReadSignMessage),
-                detail::kReadSignReply, detail::readSignReplyValidator(pageSize), std::move(op));
-            BOOST_LOG(op.log()) << "Page size " << pageSize << " detected";
+    template <class DeducedFlashProgress, class DeducedEepromProgress>
+    ProgramAllOp(handler_type& h, Programmer& s,
+            uint32_t flBase, boost::asio::const_buffer fl, DeducedFlashProgress&& flProgress,
+            uint32_t eeBase, boost::asio::const_buffer ee, DeducedEepromProgress&& eeProgress)
+        : self(s)
+        , flashBase(flBase)
+        , flash(fl)
+        , flashProgress(std::forward<DeducedFlashProgress>(flProgress))
+        , eepromBase(eeBase)
+        , eeprom(ee)
+        , eepromProgress(std::forward<DeducedEepromProgress>(eeProgress))
+        , lg(composed::get_associated_logger(h).clone())
+    {
+        lg.add_attribute("Protocol", boost::log::attributes::make_constant("STK"));
+    }
 
-            BOOST_LOG(op.log()) << "Programming flash";
-            yield {
-                // Guaranteed to be safe because we calculated blobTooBig earlier
-                auto txAddress = static_cast<uint16_t>(flashBase / 2);
-                this->asyncProgramPages(
-                    txAddress, pageSize,
-                    boost::asio::buffer(detail::kFlashType), flash,
-                    flashProgress, std::move(op));
-            }
+    void operator()(composed::op<ProgramAllOp>&);
+};
 
-            BOOST_LOG(op.log()) << "Programming EEPROM";
-            yield {
-                // Guaranteed to be safe because we called blobTooBig() earlier
-                auto txAddress = static_cast<uint16_t>(eepromBase / 2);
-                this->asyncProgramPages(
-                    txAddress, pageSize,
-                    boost::asio::buffer(detail::kEepromType), eeprom,
-                    eepromProgress, std::move(op));
-            }
-
-            BOOST_LOG(op.log()) << "Leaving programming mode";
-            yield this->asyncTransaction(
-                boost::asio::buffer(detail::kLeaveProgmodeMessage),
-                detail::kSyncReply, detail::syncReplyValidator(), std::move(op));
-
-            op.complete(make_error_code(Status::OK));
-        }
-        else if (boost::asio::error::operation_aborted != ec) {
-            op.complete(ec);
-            BOOST_LOG(op.log()) << "ProgramAll: " << ec.message();
-        }
-    };
-
-    return util::asio::asyncDispatch(
-        mContext,
-        std::make_tuple(make_error_code(boost::asio::error::operation_aborted)),
-        std::move(coroutine),
-        std::forward<CompletionToken>(token)
-    );
+static inline yourBlobIsTooBig(uint32_t base, boost::asio::const_buffer data) {
+    // The Linkbot bootloader can address up to 2^16 16-bit words.
+    auto maxAddress = base + boost::asio::buffer_size(data);
+    return maxAddress / 2 > std::numeric_limits<uint16_t>::max();
 }
 
-template <class Progress, class CompletionToken>
-inline auto ProgrammerImpl::asyncProgramPages (
-        uint16_t txAddress,
-        uint16_t pageSize,
-        boost::asio::const_buffer type,
-        boost::asio::const_buffer code,
-        Progress&& progress,
-        CompletionToken&& token) {
-    auto coroutine =
-    [ this
-    , type
-    , code
-    , progress = std::forward<Progress>(progress)
+template <class AsyncStream>
+template <class FlashProgress, class EepromProgress, class Handler>
+void Programmer<AsyncStream>::ProgramAllOp<FlashProgress, EepromProgress, Handler>::
+operator()(composed::op<ProgramAllOp>& op) {
+    if (!ec) reenter(this) {
+        // Guarantee that the blobs we got passed will actually fit on a Linkbot
+        if (yourBlobIsTooBig(flashBase, flash) || yourBlobIsTooBig(eepromBase, eeprom)) {
+            ec = Status::BLOB_TOO_BIG;
+            self.next_layer_.get_io_service().post(op());
+        }
+
+        yield return self.asyncSync(op(ec));
+
+        BOOST_LOG(lg) << "Setting device parameters";
+        yield return self.asyncTransaction(
+            boost::asio::buffer(detail::kSetDeviceMessage),
+            detail::kSyncReply, detail::syncReplyValidator(), op(ec));
+
+        BOOST_LOG(lg) << "Setting extended device parameters";
+        yield return self.asyncTransaction(
+            boost::asio::buffer(detail::kSetDeviceExtMessage),
+            detail::kSyncReply, detail::syncReplyValidator(), op(ec));
+
+        BOOST_LOG(lg) << "Entering programming mode";
+        yield return self.asyncTransaction(
+            boost::asio::buffer(detail::kEnterProgmodeMessage),
+            detail::kSyncReply, detail::syncReplyValidator(), op(ec));
+
+        BOOST_LOG(lg) << "Reading signature";
+        yield return self.asyncTransaction(
+            boost::asio::buffer(detail::kReadSignMessage),
+            detail::kReadSignReply, detail::readSignReplyValidator(pageSize), op(ec));
+        BOOST_LOG(lg) << "Page size " << pageSize << " detected";
+
+        BOOST_LOG(lg) << "Programming flash";
+        yield {
+            // Guaranteed to be safe because we calculated blobTooBig earlier
+            auto txAddress = static_cast<uint16_t>(flashBase / 2);
+            return self.asyncProgramPages(
+                txAddress, pageSize,
+                boost::asio::buffer(detail::kFlashType), flash,
+                flashProgress, op(ec));
+        }
+
+        BOOST_LOG(lg) << "Programming EEPROM";
+        yield {
+            // Guaranteed to be safe because we called blobTooBig() earlier
+            auto txAddress = static_cast<uint16_t>(eepromBase / 2);
+            return self.asyncProgramPages(
+                txAddress, pageSize,
+                boost::asio::buffer(detail::kEepromType), eeprom,
+                eepromProgress, op(ec));
+        }
+
+        BOOST_LOG(lg) << "Leaving programming mode";
+        yield return self.asyncTransaction(
+            boost::asio::buffer(detail::kLeaveProgmodeMessage),
+            detail::kSyncReply, detail::syncReplyValidator(), op(ec));
+    }
+    op.complete(ec);
+}
+
+template <class AsyncStream>
+template <class Handler>
+struct Programmer<AsyncStream>::SyncOp: boost::asio::coroutine {
+    using handler_type = Handler;
+    using allocator_type = beast::handler_alloc<char, handler_type>;
+    using executor_type = composed::handler_executor<handler_type>;
+
+    Programmer& self;
+
+    composed::associated_logger_t<Handler> lg;
+    boost::system::error_code ec;
+
+    unsigned attempts = 0;
+
+    SyncOp(handler_type& h, Programmer& s)
+        : self(s)
+        , lg(composed::get_associated_logger(h))
+    {
+    }
+
+    void operator()(composed::op<SyncOp>&);
+};
+
+template <class AsyncStream>
+template <class Handler>
+void Programmer<AsyncStream>::SyncOp<Handler>::operator()(composed::op<SyncOp>& op) {
+    constexpr unsigned kMaxAttempts = 3;
+
+    // We don't check !ec, because this is simply a loop on asyncTransaction, retrying on timeout.
+    // We complete the operation as soon as asyncTransaction succeeds or fails without a timeout.
+    reenter(this) {
+        do {
+            BOOST_LOG(lg) << "Sync attempt (" << attempts << "/" << kMaxAttempts << ")";
+            yield return self.asyncTransaction(
+                    boost::asio::buffer(detail::kSyncMessage),
+                    detail::kSyncReply,
+                    detail::syncReplyValidator(),
+                    op(ec));
+        } while (++attempts < kMaxAttempts && ec == boost::asio::error::timed_out);
+    }
+    op.complete(ec);
+}
+
+template <class AsyncStream>
+template <class Progress, class Handler>
+struct Programmer<AsyncStream>::ProgramPagesOp: boost::asio::coroutine {
+    using handler_type = Handler;
+    using allocator_type = beast::handler_alloc<char, handler_type>;
+    using executor_type = composed::handler_executor<handler_type>;
+
+    Programmer& self;
+
+    boost::endian::little_uint16_t txAddress;
+    boost::endian::big_uint16_t pageSize;
     // txAddress and pageSize get sent over the wire in differing endianness (wtf),
     // so it's most maintainable to just store them as such.
-    , txAddress = boost::endian::little_uint16_t(txAddress)
-    , pageSize = boost::endian::big_uint16_t(pageSize)
-    ]
-    (auto&& op, boost::system::error_code ec = {}) mutable {
-        if (!ec) reenter (op) {
-            while (boost::asio::buffer_size(code)) {
-                yield {
-                    auto message = detail::loadAddressMessage(
-                        boost::asio::buffer(txAddress.data(), 2));
-                    this->asyncTransaction(message, detail::kSyncReply,
-                            detail::syncReplyValidator(), std::move(op));
-                }
 
-                if (boost::asio::buffer_size(code) < pageSize) {
-                    pageSize = static_cast<uint16_t>(boost::asio::buffer_size(code));
-                }
-                yield {
-                    auto message = detail::progPageMessage(
-                        boost::asio::buffer(pageSize.data(), 2),
-                        type,
-                        boost::asio::buffer(code, pageSize));
-                    this->asyncTransaction(message, detail::kSyncReply,
-                            detail::syncReplyValidator(), std::move(op));
-                }
+    boost::asio::const_buffer type;
+    boost::asio::const_buffer code;
+    Progress& progress;
 
-                code = code + pageSize;
-                txAddress += pageSize / 2;
+    composed::associated_logger_t<Handler> lg;
+    boost::system::error_code ec;
 
-                // Update client code on progress, i.e., bytes written
-                progress(static_cast<uint16_t>(pageSize));
-            }
-            // TODO read back pages to verify?
-            op.complete(make_error_code(Status::OK));
-        }
-        else if (boost::asio::error::operation_aborted != ec) {
-            op.complete(ec);
-            BOOST_LOG(op.log()) << "ProgramPages: " << ec.message();
-        }
-    };
-
-    return util::asio::asyncDispatch(
-        mContext,
-        std::make_tuple(make_error_code(boost::asio::error::operation_aborted)),
-        std::move(coroutine),
-        std::forward<CompletionToken>(token)
-    );
-}
-
-template <class ConstBufferSequence, class Validator, class CompletionToken>
-inline auto ProgrammerImpl::asyncTransaction (unsigned maxAttempts,
-        const ConstBufferSequence& outBuf, boost::regex re, Validator&& validator,
-        CompletionToken&& token) {
-    auto coroutine =
-    [ this
-    , maxAttempts
-    , outBuf
-    , re
-    , validator = std::forward<Validator>(validator)
-    , inBuf = std::make_unique<detail::StreamBuf>()  // StreamBuf is immovable
-    , what = boost::match_results<detail::StreamBufIter>{}
-    , attempts = 0u
-    , readDone = false
-    , writeDone = false
-    ]
-    (auto&& op, boost::system::error_code ec = {}, size_t n = 0) mutable {
-        BOOST_LOG(op.log()) << "asyncTransaction: reenter on CPU=[" << sched_getcpu()
-                << "] ec=[" << ec.message() << "]";
-        if (!ec) reenter (op) {
-            if (!maxAttempts) {
-                BOOST_LOG(op.log()) << "asyncTransaction: passed 0 maxAttempts";
-                op.complete(make_error_code(Status::OK));
-                return;
-            }
-            // Spawn a child to continuously spawn write ops if the read op
-            // takes forever. If the write op runs out of retries, the child
-            // will close the serial port.
-            fork op.runChild();
-            if (op.is_child()) {
-                BOOST_LOG(op.log()) << "asyncTransaction: write child Entering write loop";
-                while (!readDone && ++attempts <= maxAttempts) {
-                    writeDone = false;
-
-                    // Spawn a child to close the serial port if the write op
-                    // takes forever.
-                    fork op.runChild();
-                    if (op.is_child()) {
-                        BOOST_LOG(op.log()) << "asyncTransaction: write child beginning write watchdog";
-                        if (mTimer.expires_at() ==
-                                boost::asio::steady_timer::time_point::min()) {
-                            BOOST_LOG(op.log()) << "asyncTransaction: write child already canceled";
-                            return;
-                        }
-                        mTimer.expires_from_now(this->transactionTimeout());
-                        yield mTimer.async_wait(std::move(op));
-
-                        // Rely on writeDone to close the serial port, in case
-                        // the async_write and async_wait continuations were
-                        // scheduled back-to-back.
-                        if (!writeDone) {
-                            op.complete(make_error_code(Status::TIMEOUT));
-                            BOOST_LOG(op.log()) << "Transaction timed out on write";
-                            this->close(ec);
-                        }
-                        BOOST_LOG(op.log()) << "asyncTransaction: write child write watchdog done";
-                        return;
-                    }
-
-                    if (attempts > 1) {
-                        BOOST_LOG(op.log()) << "Retrying Transaction write attempt ("
-                            << attempts << "/" << maxAttempts << ")";
-                    }
-                    BOOST_LOG(op.log()) << "asyncTransaction: write child writing";
-                    yield boost::asio::async_write(mSerialPort, outBuf, std::move(op));
-                    writeDone = true;
-
-                    BOOST_LOG(op.log()) << "asyncTransaction: write child beginning read watchdog";
-                    if (mTimer.expires_at() ==
-                            boost::asio::steady_timer::time_point::min()) {
-                        return;
-                    }
-                    mTimer.expires_from_now(this->transactionTimeout());
-                    yield mTimer.async_wait(std::move(op));
-                }
-                // Similar to writeDone, we need to check the return code, in
-                // case the async_read and async_wait continuations were
-                // scheduled back-to-back.
-                if (!readDone) {
-                    BOOST_LOG(op.log()) << "Transaction timed out on read";
-                    op.complete(make_error_code(Status::TIMEOUT));
-                    this->close(ec);
-                }
-                BOOST_LOG(op.log()) << "asyncTransaction: write child read watchdog done";
-                return;
-            }
-
-            BOOST_LOG(op.log()) << "asyncTransaction: reading";
-            yield {
-                auto matchCond = detail::FullRegexMatch<detail::StreamBufIter>{what, re};
-                boost::asio::async_read_until(mSerialPort, *inBuf, matchCond, std::move(op));
-            }
-            readDone = true;
-            mTimer.expires_at(boost::asio::steady_timer::time_point::min());
-
-            BOOST_LOG(op.log()) << "asyncTransaction: validating input";
-            ec = Status::OK;  // ensure `ec` is 0 before calling `validator`
-            validator(n, *inBuf, what, ec);
-            op.complete(ec);
-            BOOST_LOG(op.log()) << "asyncTransaction: done";
-        }
-        else if (ec != boost::asio::error::operation_aborted) {
-            BOOST_LOG(op.log()) << "TransactionOperation error: " << ec.message();
-            op.complete(ec);
-            this->close(ec);
-        }
-    };
-
-    mTimer.expires_from_now(std::chrono::seconds(0));
-    // We use mTimer.expires_at(time_point::min()) to break the transaction attempt loop. Make sure
-    // it's in an "uncanceled" state before spawning the operation.
-
-    return util::asio::asyncDispatch(mContext,
-        std::make_tuple(make_error_code(boost::asio::error::operation_aborted)),
-        std::move(coroutine),
-        std::forward<CompletionToken>(token)
-    );
-}
-
-class Programmer : public util::asio::TransparentIoObject<ProgrammerImpl> {
-public:
-    explicit Programmer (boost::asio::io_service& context)
-        : util::asio::TransparentIoObject<ProgrammerImpl>(context)
-    {}
-
-    explicit Programmer (boost::asio::serial_port&& serialPort)
-        : util::asio::TransparentIoObject<ProgrammerImpl>(serialPort.get_io_service())
+    ProgramPagesOp(handler_type& h, Programmer& s,
+            uint16_t txAddr,
+            uint16_t pgSize,
+            boost::asio::const_buffer t,
+            boost::asio::const_buffer c,
+            Progress& pr)
+        : self(s)
+        , txAddress(txAddr)
+        , pageSize(pgSize)
+        , type(t)
+        , code(c)
+        , progress(pr)
+        , lg(composed::get_associated_logger(h))
     {
-        this->get_implementation()->init(std::move(serialPort));
     }
 
-    boost::asio::serial_port& stream () {
-        return this->get_implementation()->stream();
-    }
-
-    template <class Duration>
-    void transactionTimeout (Duration&& timeout) {
-        this->get_implementation()->transactionTimeout(std::forward<Duration>(timeout));
-    }
-
-    auto transactionTimeout () const {
-        return this->get_implementation()->transactionTimeout();
-    }
-
-    UTIL_ASIO_DECL_ASYNC_METHOD(asyncSync)
-    UTIL_ASIO_DECL_ASYNC_METHOD(asyncProgramAll)
+    void operator()(composed::op<ProgramPagesOp>&);
 };
+
+template <class AsyncStream>
+template <class Progress, class Handler>
+void Programmer<AsyncStream>::ProgramPagesOp<Progress, Handler>::
+operator()(composed::op<ProgramPagesOp>& op) {
+    if (!ec) reenter(this) {
+        while (boost::asio::buffer_size(code)) {
+            yield {
+                auto message = detail::loadAddressMessage(
+                    boost::asio::buffer(txAddress.data(), 2));
+                return self.asyncTransaction(message, detail::kSyncReply,
+                        detail::syncReplyValidator(), op(ec));
+            }
+
+            if (boost::asio::buffer_size(code) < pageSize) {
+                pageSize = static_cast<uint16_t>(boost::asio::buffer_size(code));
+            }
+            yield {
+                auto message = detail::progPageMessage(
+                    boost::asio::buffer(pageSize.data(), 2),
+                    type,
+                    boost::asio::buffer(code, pageSize));
+                return self.asyncTransaction(message, detail::kSyncReply,
+                        detail::syncReplyValidator(), op(ec));
+            }
+
+            code = code + pageSize;
+            txAddress += pageSize / 2;
+
+            // Update client code on progress, i.e., bytes written
+            progress(static_cast<uint16_t>(pageSize));
+        }
+        // TODO read back pages to verify?
+    }
+    op.complete(ec);
+}
+
+template <class AsyncStream>
+template <class ConstBufferSequence, class Validator, class Handler>
+struct Programmer<AsyncStream>::TransactionOp: boost::asio::coroutine {
+    using handler_type = Handler;
+    using allocator_type = beast::handler_alloc<char, handler_type>;
+    using executor_type = composed::handler_executor<handler_type>;
+
+    Programmer& self;
+
+    ConstBufferSequence outBuf;
+    boost::regex re;
+    Validator validator;
+
+    detail::StreamBuf inBuf;
+    boost::match_results<detail::StreamBufIter> what;
+    bool readDone = false;
+    bool writeDone = false;
+
+    composed::associated_logger_t<Handler> lg;
+    boost::system::error_code ec;
+
+    size_t n;
+
+    template <class DeducedValidator>
+    TransactionOp(handler_type& h, Programmer& s,
+            const ConstBufferSequence& b, boost::regex r, DeducedValidator&& v)
+        : self(s)
+        , outBuf(b)
+        , re(std::move(r))
+        , validator(std::forward<DeducedValidator>(v))
+        , lg(composed::get_associated_logger(h))
+    {
+    }
+
+    void operator()(composed::op<TransactionOp>&);
+};
+
+template <class AsyncStream>
+template <class ConstBufferSequence, class Validator, class Handler>
+void Programmer<AsyncStream>::TransactionOp<ConstBufferSequence, Validator, Handler>::
+operator()(composed::op<TransactionOp>& op) {
+    constexpr std::chrono::milliseconds kTransactionTimeout{500};
+
+    BOOST_LOG(lg) << "asyncTransaction: reenter on CPU=[" << sched_getcpu()
+            << "] ec=[" << ec.message() << "]";
+
+    if (!ec) reenter(this) {
+        BOOST_LOG(lg) << "asyncTransaction: writing";
+        yield return boost::asio::async_write(self.next_layer_, outBuf,
+                composed::timed(self.next_layer_, kTransactionTimeout, op(ec, std::ignore)));
+
+        BOOST_LOG(lg) << "asyncTransaction: reading";
+        yield {
+            auto matchCond = detail::FullRegexMatch<detail::StreamBufIter>{what, re};
+            return boost::asio::async_read_until(self.next_layer_, inBuf, matchCond,
+                    composed::timed(self.next_layer_, kTransactionTimeout, op(ec, n)));
+        }
+
+        BOOST_LOG(lg) << "asyncTransaction: validating input";
+        ec = Status::OK;  // ensure `ec` is 0 before calling `validator`
+        validator(n, inBuf, what, ec);
+        BOOST_LOG(lg) << "asyncTransaction: done";
+    }
+    op.complete(ec);
+}
 
 } // namespace stk
 
