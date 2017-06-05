@@ -10,7 +10,6 @@ std::string ErrorCategory::message (int ev) const BOOST_NOEXCEPT {
     switch (Status(ev)) {
 #define ITEM(x) case Status::x: return #x;
         ITEM(OK)
-        ITEM(TIMEOUT)
         ITEM(PROTOCOL_ERROR)
         ITEM(UNKNOWN_SIGNATURE)
         ITEM(BLOB_TOO_BIG)

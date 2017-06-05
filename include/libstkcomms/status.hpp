@@ -5,7 +5,6 @@ namespace stk {
 
 enum class Status {
     OK,
-    TIMEOUT,
     PROTOCOL_ERROR,
     UNKNOWN_SIGNATURE,
     BLOB_TOO_BIG

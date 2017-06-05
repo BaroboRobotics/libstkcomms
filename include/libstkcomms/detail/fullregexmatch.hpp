@@ -6,8 +6,7 @@
 
 #include <type_traits>
 
-namespace stk {
-namespace detail {
+namespace stk { namespace _ {
 
 // FullRegexMatch is an Asio MatchCondition to be used in conjunction with
 // async_read_until. Given a regular expression, FullRegexMatch causes
@@ -37,15 +36,13 @@ struct FullRegexMatch {
         return std::make_pair(b, true);
     }
 };
-} // detail
-} // stk
+
+}}  // stk::_
 
 // Asio demands that we explicitly tell it FullRegexMatch is a MatchCondition.
-namespace boost {
-namespace asio {
+namespace boost { namespace asio {
 template <class Iter>
-struct is_match_condition<::stk::detail::FullRegexMatch<Iter>> : std::true_type {};
-}
-}
+struct is_match_condition<::stk::_::FullRegexMatch<Iter>> : std::true_type {};
+}}  // boost::asio
 
 #endif

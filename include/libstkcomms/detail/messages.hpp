@@ -13,7 +13,7 @@
 
 #include <cstdint>
 
-namespace stk { namespace detail { namespace {
+namespace stk { namespace _ { namespace {
 
 using StreamBuf = boost::asio::streambuf;
 using StreamBufIter = boost::asio::buffers_iterator<StreamBuf::const_buffers_type>;
@@ -83,11 +83,11 @@ inline auto readSignReplyValidator (uint16_t& pageSize) {
             const boost::match_results<StreamBufIter>& what, boost::system::error_code& ec) {
         if (what[0].matched) {
             const auto& sigMatch = what[1].str();
-            auto signature = detail::UString(sigMatch.begin(), sigMatch.end());
-            if (!signature.compare(detail::kMobotILSignature)) {
+            auto signature = _::UString(sigMatch.begin(), sigMatch.end());
+            if (!signature.compare(_::kMobotILSignature)) {
                 pageSize = 256;
             }
-            else if (!signature.compare(detail::kMobotASignature)) {
+            else if (!signature.compare(_::kMobotASignature)) {
                 pageSize = 128;
             }
             else {
@@ -130,6 +130,6 @@ progPageMessage (boost::asio::const_buffer size, boost::asio::const_buffer type,
     };
 }
 
-}}} // stk::detail::<anonymous>
+}}} // stk::_::<anonymous>
 
 #endif
