@@ -57,7 +57,7 @@ auto asyncProgramAll(AsyncStream& stream,
 
 namespace _ {
 
-static inline yourBlobIsTooBig(uint32_t base, boost::asio::const_buffer data) {
+static inline bool yourBlobIsTooBig(uint32_t base, boost::asio::const_buffer data) {
     // The Linkbot bootloader can address up to 2^16 16-bit words.
     auto maxAddress = base + boost::asio::buffer_size(data);
     return maxAddress / 2 > std::numeric_limits<uint16_t>::max();
